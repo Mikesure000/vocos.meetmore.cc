@@ -17,7 +17,7 @@ jobs:
 
       - name: Download current source archive
         run: |
-          curl -fsSL https://vocos.meetmore.cc/vocos-source.zip -o /tmp/vocos-source.zip
+          curl -fsSL "https://vocos.meetmore.cc/vocos-source.zip?sync=20260530-002" -o /tmp/vocos-source.zip
           rm -rf /tmp/vocos-source
           mkdir -p /tmp/vocos-source
           unzip -q /tmp/vocos-source.zip -d /tmp/vocos-source
