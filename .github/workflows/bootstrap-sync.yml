@@ -26,6 +26,7 @@ jobs:
         run: |
           rsync -a --delete \
             --exclude '.git/' \
+            --exclude '.github/workflows/' \
             --exclude 'fullstack/.env' \
             --exclude 'fullstack/data/' \
             --exclude '*.db' \
@@ -33,7 +34,6 @@ jobs:
             --exclude '*.sqlite3' \
             --exclude '*.log' \
             /tmp/vocos-source/ ./
-          rm -f .github/workflows/bootstrap-sync.yml
 
       - name: Commit source snapshot
         run: |
