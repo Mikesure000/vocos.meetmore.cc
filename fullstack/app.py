@@ -136,10 +136,69 @@ def rowdict(row):
     return dict(row) if row else None
 
 
+BRAND_SCOPED_TABLES = [
+    "comments",
+    "demands",
+    "barriers",
+    "strategies",
+    "competitor_opps",
+    "content_items",
+    "test_plans",
+    "reviews",
+    "reports",
+    "knowledge_tags",
+    "ai_runs",
+    "ai_run_steps",
+]
+
+
+def table_columns(db, table):
+    return {row["name"] for row in db.execute(f"PRAGMA table_info({table})")}
+
+
+def ensure_column(db, table, column, definition):
+    if column not in table_columns(db, table):
+        db.execute(f"ALTER TABLE {table} ADD COLUMN {column} {definition}")
+
+
+def active_brand_id(db):
+    row = db.execute("SELECT value FROM app_state WHERE key = 'active_brand_id'").fetchone()
+    if row:
+        try:
+            return int(row["value"])
+        except (TypeError, ValueError):
+            pass
+    return 1
+
+
+def set_active_brand(db, brand_id):
+    db.execute(
+        "INSERT INTO app_state (key, value) VALUES ('active_brand_id', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+        (str(brand_id),),
+    )
+
+
 def init_db():
     with connect() as db:
         db.executescript(
             """
+            CREATE TABLE IF NOT EXISTS app_state (
+              key TEXT PRIMARY KEY,
+              value TEXT NOT NULL
+            );
+
+            CREATE TABLE IF NOT EXISTS brands (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              name TEXT NOT NULL,
+              industry TEXT NOT NULL DEFAULT '',
+              slogan TEXT NOT NULL DEFAULT '',
+              positioning TEXT NOT NULL DEFAULT '',
+              categories TEXT NOT NULL DEFAULT '[]',
+              is_active INTEGER NOT NULL DEFAULT 0,
+              created_at TEXT NOT NULL,
+              updated_at TEXT NOT NULL
+            );
+
             CREATE TABLE IF NOT EXISTS comments (
               id INTEGER PRIMARY KEY AUTOINCREMENT,
               external_id TEXT,
@@ -288,9 +347,119 @@ def init_db():
               finished_at TEXT,
               FOREIGN KEY(run_id) REFERENCES ai_runs(id) ON DELETE CASCADE
             );
+
+            CREATE TABLE IF NOT EXISTS import_batches (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              brand_id INTEGER NOT NULL DEFAULT 1,
+              source TEXT NOT NULL DEFAULT '',
+              mode TEXT NOT NULL DEFAULT 'manual',
+              total_rows INTEGER NOT NULL DEFAULT 0,
+              inserted_rows INTEGER NOT NULL DEFAULT 0,
+              duplicate_rows INTEGER NOT NULL DEFAULT 0,
+              status TEXT NOT NULL DEFAULT 'success',
+              run_id INTEGER,
+              created_at TEXT NOT NULL
+            );
+
+            CREATE TABLE IF NOT EXISTS review_items (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              brand_id INTEGER NOT NULL DEFAULT 1,
+              source_table TEXT NOT NULL,
+              source_id INTEGER NOT NULL,
+              title TEXT NOT NULL,
+              summary TEXT NOT NULL DEFAULT '',
+              status TEXT NOT NULL DEFAULT 'pending',
+              confidence INTEGER NOT NULL DEFAULT 70,
+              notes TEXT NOT NULL DEFAULT '',
+              created_at TEXT NOT NULL,
+              updated_at TEXT NOT NULL
+            );
+
+            CREATE TABLE IF NOT EXISTS briefs (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              brand_id INTEGER NOT NULL DEFAULT 1,
+              strategy_id INTEGER,
+              title TEXT NOT NULL,
+              platform TEXT NOT NULL DEFAULT '',
+              objective TEXT NOT NULL DEFAULT '',
+              audience TEXT NOT NULL DEFAULT '',
+              key_message TEXT NOT NULL DEFAULT '',
+              content_outline TEXT NOT NULL DEFAULT '',
+              kpi TEXT NOT NULL DEFAULT '',
+              budget TEXT NOT NULL DEFAULT '',
+              status TEXT NOT NULL DEFAULT 'draft',
+              created_at TEXT NOT NULL
+            );
+
+            CREATE TABLE IF NOT EXISTS weekly_snapshots (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              brand_id INTEGER NOT NULL DEFAULT 1,
+              week_start TEXT NOT NULL,
+              metrics TEXT NOT NULL DEFAULT '{}',
+              summary TEXT NOT NULL DEFAULT '',
+              created_at TEXT NOT NULL
+            );
             """
         )
+        migrate(db)
         seed(db)
+
+
+def migrate(db):
+    for table in BRAND_SCOPED_TABLES:
+        ensure_column(db, table, "brand_id", "INTEGER NOT NULL DEFAULT 1")
+    ensure_column(db, "comments", "dedupe_key", "TEXT NOT NULL DEFAULT ''")
+    ensure_column(db, "comments", "import_batch_id", "INTEGER")
+    ensure_column(db, "strategies", "review_status", "TEXT NOT NULL DEFAULT 'pending'")
+    ensure_column(db, "strategies", "confidence", "INTEGER NOT NULL DEFAULT 70")
+    ensure_column(db, "demands", "review_status", "TEXT NOT NULL DEFAULT 'pending'")
+    ensure_column(db, "barriers", "review_status", "TEXT NOT NULL DEFAULT 'pending'")
+    ensure_column(db, "reports", "body", "TEXT NOT NULL DEFAULT ''")
+    ensure_column(db, "knowledge_tags", "confidence", "INTEGER NOT NULL DEFAULT 70")
+
+    if db.execute("SELECT COUNT(*) FROM brands").fetchone()[0] == 0:
+        row = rowdict(db.execute("SELECT data FROM brand_profile WHERE id = 1").fetchone())
+        profile = {}
+        if row:
+            try:
+                profile = json.loads(row["data"])
+            except json.JSONDecodeError:
+                profile = {}
+        db.execute(
+            """
+            INSERT INTO brands (id, name, industry, slogan, positioning, categories, is_active, created_at, updated_at)
+            VALUES (1, ?, ?, ?, ?, ?, 1, ?, ?)
+            """,
+            (
+                profile.get("name") or "默认品牌",
+                profile.get("industry") or "未设置行业",
+                profile.get("slogan") or "",
+                profile.get("positioning") or "",
+                json.dumps(["护肤", "内容策略"], ensure_ascii=False),
+                now(),
+                now(),
+            ),
+        )
+        set_active_brand(db, 1)
+
+    for table in BRAND_SCOPED_TABLES:
+        db.execute(f"UPDATE {table} SET brand_id = 1 WHERE brand_id IS NULL OR brand_id = 0")
+    db.execute("UPDATE comments SET dedupe_key = COALESCE(NULLIF(dedupe_key, ''), COALESCE(external_id, '') || '|' || author || '|' || content || '|' || COALESCE(comment_time, ''))")
+
+    if db.execute("SELECT COUNT(*) FROM review_items").fetchone()[0] == 0:
+        for table, title_col, summary_col, confidence in [
+            ("strategies", "title", "body", 76),
+            ("demands", "text", "action", 72),
+            ("barriers", "text", "solution", 70),
+        ]:
+            for row in db.execute(f"SELECT id, brand_id, {title_col} AS title, {summary_col} AS summary FROM {table} ORDER BY id DESC LIMIT 20"):
+                db.execute(
+                    """
+                    INSERT INTO review_items (brand_id, source_table, source_id, title, summary, status, confidence, notes, created_at, updated_at)
+                    VALUES (?, ?, ?, ?, ?, 'pending', ?, '', ?, ?)
+                    """,
+                    (row["brand_id"], table, row["id"], row["title"], row["summary"], confidence, now(), now()),
+                )
 
 
 def seed(db):
@@ -415,32 +584,54 @@ def normalize_row(row):
     }
 
 
-def insert_comments(db, rows):
+def comment_dedupe_key(item):
+    external = (item.get("external_id") or "").strip()
+    if external:
+        return "external:" + external
+    parts = [item.get("author") or "", item.get("content") or "", item.get("comment_time") or ""]
+    return "content:" + "|".join(parts).strip().lower()
+
+
+def insert_comments(db, rows, brand_id=None, import_batch_id=None, dedupe=True):
+    brand_id = brand_id or active_brand_id(db)
     normalized = [normalize_row(r) for r in rows]
     normalized = [r for r in normalized if r]
-    db.executemany(
-        """
-        INSERT INTO comments
-        (external_id, content, platform, category, type, sentiment, labels, author, douyin_id, likes, comment_time, ip_address, is_competitor, created_at)
-        VALUES
-        (:external_id, :content, :platform, :category, :type, :sentiment, :labels, :author, :douyin_id, :likes, :comment_time, :ip_address, :is_competitor, :created_at)
-        """,
-        [{**item, "created_at": now()} for item in normalized],
-    )
-    return len(normalized)
+    inserted = 0
+    duplicates = 0
+    for item in normalized:
+        key = comment_dedupe_key(item)
+        if dedupe:
+            exists = db.execute("SELECT id FROM comments WHERE brand_id = ? AND dedupe_key = ? LIMIT 1", (brand_id, key)).fetchone()
+            if exists:
+                duplicates += 1
+                continue
+        db.execute(
+            """
+            INSERT INTO comments
+            (brand_id, external_id, content, platform, category, type, sentiment, labels, author, douyin_id, likes, comment_time, ip_address, is_competitor, dedupe_key, import_batch_id, created_at)
+            VALUES
+            (:brand_id, :external_id, :content, :platform, :category, :type, :sentiment, :labels, :author, :douyin_id, :likes, :comment_time, :ip_address, :is_competitor, :dedupe_key, :import_batch_id, :created_at)
+            """,
+            {**item, "brand_id": brand_id, "dedupe_key": key, "import_batch_id": import_batch_id, "created_at": now()},
+        )
+        inserted += 1
+    return {"inserted": inserted, "duplicates": duplicates, "total": len(normalized)}
 
 
 def dashboard(db):
-    total = db.execute("SELECT COUNT(*) FROM comments").fetchone()[0]
-    demands = db.execute("SELECT COUNT(*) FROM demands").fetchone()[0]
-    barriers = db.execute("SELECT COUNT(*) FROM barriers").fetchone()[0]
-    strategies = db.execute("SELECT COUNT(*) FROM strategies").fetchone()[0]
-    content = db.execute("SELECT COUNT(*) FROM content_items").fetchone()[0]
-    tests = db.execute("SELECT COUNT(*) FROM test_plans").fetchone()[0]
-    reviews = db.execute("SELECT COUNT(*) FROM reviews").fetchone()[0]
-    latest = [rowdict(r) for r in db.execute("SELECT * FROM strategies ORDER BY id DESC LIMIT 5")]
-    actions = [rowdict(r) for r in db.execute("SELECT * FROM strategies ORDER BY CASE priority WHEN 'P0' THEN 0 WHEN 'P1' THEN 1 ELSE 2 END, id DESC LIMIT 5")]
+    brand_id = active_brand_id(db)
+    brand = rowdict(db.execute("SELECT * FROM brands WHERE id = ?", (brand_id,)).fetchone())
+    total = db.execute("SELECT COUNT(*) FROM comments WHERE brand_id = ?", (brand_id,)).fetchone()[0]
+    demands = db.execute("SELECT COUNT(*) FROM demands WHERE brand_id = ?", (brand_id,)).fetchone()[0]
+    barriers = db.execute("SELECT COUNT(*) FROM barriers WHERE brand_id = ?", (brand_id,)).fetchone()[0]
+    strategies = db.execute("SELECT COUNT(*) FROM strategies WHERE brand_id = ?", (brand_id,)).fetchone()[0]
+    content = db.execute("SELECT COUNT(*) FROM content_items WHERE brand_id = ?", (brand_id,)).fetchone()[0]
+    tests = db.execute("SELECT COUNT(*) FROM test_plans WHERE brand_id = ?", (brand_id,)).fetchone()[0]
+    reviews = db.execute("SELECT COUNT(*) FROM reviews WHERE brand_id = ?", (brand_id,)).fetchone()[0]
+    latest = [rowdict(r) for r in db.execute("SELECT * FROM strategies WHERE brand_id = ? ORDER BY id DESC LIMIT 5", (brand_id,))]
+    actions = [rowdict(r) for r in db.execute("SELECT * FROM strategies WHERE brand_id = ? ORDER BY CASE priority WHEN 'P0' THEN 0 WHEN 'P1' THEN 1 ELSE 2 END, id DESC LIMIT 5", (brand_id,))]
     return {
+        "brand": brand,
         "metrics": {
             "comments": total,
             "demands": demands,
@@ -459,6 +650,10 @@ def dashboard(db):
 
 def list_table(db, table, order="id DESC", limit=100):
     return [rowdict(r) for r in db.execute(f"SELECT * FROM {table} ORDER BY {order} LIMIT ?", (limit,))]
+
+
+def list_brand_table(db, table, order="id DESC", limit=100):
+    return [rowdict(r) for r in db.execute(f"SELECT * FROM {table} WHERE brand_id = ? ORDER BY {order} LIMIT ?", (active_brand_id(db), limit))]
 
 
 AGENT_SPECS = [
@@ -494,9 +689,30 @@ def module_matrix(db):
     ]
 
 
+def module_matrix(db):
+    brand_id = active_brand_id(db)
+    return [
+        {"group": "决策", "module": "本周决策台", "input": "全部 Agent 结果", "output": "优先级动作卡片", "count": db.execute("SELECT COUNT(*) FROM strategies WHERE brand_id = ?", (brand_id,)).fetchone()[0]},
+        {"group": "洞察", "module": "评论信号池", "input": "导入原始评论", "output": "分类标签表格", "count": db.execute("SELECT COUNT(*) FROM comments WHERE brand_id = ?", (brand_id,)).fetchone()[0]},
+        {"group": "洞察", "module": "用户需求地图", "input": "评论分析 Agent", "output": "频率/趋势/建议动作", "count": db.execute("SELECT COUNT(*) FROM demands WHERE brand_id = ?", (brand_id,)).fetchone()[0]},
+        {"group": "洞察", "module": "购买障碍地图", "input": "障碍分析 Agent", "output": "分布统计+解决方案", "count": db.execute("SELECT COUNT(*) FROM barriers WHERE brand_id = ?", (brand_id,)).fetchone()[0]},
+        {"group": "洞察", "module": "竞品机会地图", "input": "竞品洞察 Agent", "output": "SWOT+切入机会", "count": db.execute("SELECT COUNT(*) FROM competitor_opps WHERE brand_id = ?", (brand_id,)).fetchone()[0]},
+        {"group": "策略", "module": "小红书策略卡", "input": "小红书策略 Agent", "output": "可执行内容卡", "count": db.execute("SELECT COUNT(*) FROM strategies WHERE brand_id = ? AND (subtitle LIKE '%小红书%' OR title LIKE '%小红书%')", (brand_id,)).fetchone()[0]},
+        {"group": "策略", "module": "抖音策略卡", "input": "抖音策略 Agent", "output": "可执行脚本卡", "count": db.execute("SELECT COUNT(*) FROM strategies WHERE brand_id = ? AND (subtitle LIKE '%抖音%' OR title LIKE '%抖音%')", (brand_id,)).fetchone()[0]},
+        {"group": "执行", "module": "内容实验室", "input": "策略 Agent 输出", "output": "测试组+预算+规则", "count": db.execute("SELECT COUNT(*) FROM test_plans WHERE brand_id = ?", (brand_id,)).fetchone()[0]},
+        {"group": "执行", "module": "复盘归因中心", "input": "投放数据", "output": "归因结论+下一步", "count": db.execute("SELECT COUNT(*) FROM reviews WHERE brand_id = ?", (brand_id,)).fetchone()[0]},
+        {"group": "执行", "module": "报告中心", "input": "全模块数据", "output": "角色化报告", "count": db.execute("SELECT COUNT(*) FROM reports WHERE brand_id = ?", (brand_id,)).fetchone()[0]},
+        {"group": "资产", "module": "品牌中心", "input": "多品牌档案", "output": "独立工作区+品类标签", "count": db.execute("SELECT COUNT(*) FROM brands").fetchone()[0]},
+        {"group": "资产", "module": "对标中心", "input": "竞品资料+评论", "output": "SWOT+产品对标", "count": db.execute("SELECT COUNT(*) FROM competitor_opps WHERE brand_id = ?", (brand_id,)).fetchone()[0]},
+        {"group": "资产", "module": "品类知识库", "input": "自动聚类沉淀", "output": "标签体系", "count": db.execute("SELECT COUNT(*) FROM knowledge_tags WHERE brand_id = ?", (brand_id,)).fetchone()[0]},
+        {"group": "引擎", "module": "AI分析引擎", "input": "API配置+品牌上下文", "output": "Agent链路+执行记录", "count": db.execute("SELECT COUNT(*) FROM ai_runs WHERE brand_id = ?", (brand_id,)).fetchone()[0]},
+    ]
+
+
 def agent_flow(db):
-    latest_runs = list_table(db, "ai_runs", "id DESC", 10)
-    latest_steps = [rowdict(r) for r in db.execute("SELECT * FROM ai_run_steps ORDER BY id DESC LIMIT 30")]
+    brand_id = active_brand_id(db)
+    latest_runs = [rowdict(r) for r in db.execute("SELECT * FROM ai_runs WHERE brand_id = ? ORDER BY id DESC LIMIT 10", (brand_id,))]
+    latest_steps = [rowdict(r) for r in db.execute("SELECT * FROM ai_run_steps WHERE brand_id = ? ORDER BY id DESC LIMIT 30", (brand_id,))]
     return {"agents": AGENT_SPECS, "runs": latest_runs, "steps": latest_steps}
 
 
@@ -506,8 +722,8 @@ def list_comments(db, query):
     search = params.get("search", [""])[0].strip()
     ctype = params.get("type", [""])[0].strip()
     sql = "SELECT * FROM comments"
-    values = []
-    clauses = []
+    values = [active_brand_id(db)]
+    clauses = ["brand_id = ?"]
     if search:
         clauses.append("(content LIKE ? OR author LIKE ? OR labels LIKE ?)")
         values.extend([f"%{search}%", f"%{search}%", f"%{search}%"])
@@ -665,15 +881,17 @@ def parse_model_json(content):
 
 
 def collect_agent_context(db):
+    brand_id = active_brand_id(db)
     return {
-        "comments": [rowdict(r) for r in db.execute("SELECT id, content, type, sentiment, labels, author, likes FROM comments ORDER BY id DESC LIMIT 80")],
-        "content": list_table(db, "content_items", "id DESC", 30),
-        "demands": list_table(db, "demands", "frequency DESC, id DESC", 30),
-        "barriers": list_table(db, "barriers", "count DESC, id DESC", 30),
-        "competitors": list_table(db, "competitor_opps", "id DESC", 20),
-        "strategies": list_table(db, "strategies", "id DESC", 30),
-        "tests": list_table(db, "test_plans", "id DESC", 20),
-        "reviews": list_table(db, "reviews", "id DESC", 20),
+        "brand": rowdict(db.execute("SELECT * FROM brands WHERE id = ?", (brand_id,)).fetchone()),
+        "comments": [rowdict(r) for r in db.execute("SELECT id, content, type, sentiment, labels, author, likes FROM comments WHERE brand_id = ? ORDER BY id DESC LIMIT 80", (brand_id,))],
+        "content": list_brand_table(db, "content_items", "id DESC", 30),
+        "demands": list_brand_table(db, "demands", "frequency DESC, id DESC", 30),
+        "barriers": list_brand_table(db, "barriers", "count DESC, id DESC", 30),
+        "competitors": list_brand_table(db, "competitor_opps", "id DESC", 20),
+        "strategies": list_brand_table(db, "strategies", "id DESC", 30),
+        "tests": list_brand_table(db, "test_plans", "id DESC", 20),
+        "reviews": list_brand_table(db, "reviews", "id DESC", 20),
     }
 
 
@@ -811,6 +1029,95 @@ def apply_agent_output(db, agent_id, data):
     return written
 
 
+def create_review_item(db, source_table, source_id, title, summary="", confidence=70):
+    db.execute(
+        """
+        INSERT INTO review_items (brand_id, source_table, source_id, title, summary, status, confidence, notes, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, 'pending', ?, '', ?, ?)
+        """,
+        (active_brand_id(db), source_table, source_id, title, summary, confidence, now(), now()),
+    )
+
+
+def apply_agent_output(db, agent_id, data):
+    brand_id = active_brand_id(db)
+    written = 0
+    if agent_id == "comments":
+        for item in data.get("analyses", [])[:80]:
+            labels = json.dumps(item.get("labels", []), ensure_ascii=False)
+            db.execute(
+                "UPDATE comments SET type = ?, sentiment = ?, labels = ? WHERE id = ? AND brand_id = ?",
+                (item.get("type", "demand"), item.get("sentiment", "neutral"), labels, int(item.get("id", 0) or 0), brand_id),
+            )
+            written += 1
+    elif agent_id == "content":
+        for item in data.get("items", [])[:30]:
+            db.execute(
+                "UPDATE content_items SET content_type = ?, summary = ?, is_analyzed = 1 WHERE id = ? AND brand_id = ?",
+                (item.get("content_type", "策略素材"), item.get("summary", ""), int(item.get("id", 0) or 0), brand_id),
+            )
+            written += 1
+    elif agent_id == "demands":
+        for d in data.get("demands", [])[:8]:
+            db.execute(
+                "INSERT INTO demands (brand_id, category, text, frequency, trend, action, review_status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                (brand_id, d.get("category", "未分类"), d.get("text", ""), int(d.get("frequency", 0) or 0), d.get("trend", "stable"), d.get("action", ""), "pending", now()),
+            )
+            new_id = db.execute("SELECT last_insert_rowid()").fetchone()[0]
+            create_review_item(db, "demands", new_id, d.get("text", "需求洞察"), d.get("action", ""), 75)
+            written += 1
+    elif agent_id == "barriers":
+        for b in data.get("barriers", [])[:8]:
+            db.execute(
+                "INSERT INTO barriers (brand_id, type, text, severity, count, solution, review_status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                (brand_id, b.get("type", "trust"), b.get("text", ""), b.get("severity", "medium"), int(b.get("count", 0) or 0), b.get("solution", ""), "pending", now()),
+            )
+            new_id = db.execute("SELECT last_insert_rowid()").fetchone()[0]
+            create_review_item(db, "barriers", new_id, b.get("text", "购买障碍"), b.get("solution", ""), 72)
+            written += 1
+    elif agent_id == "competitors":
+        for c in data.get("competitor_opps", [])[:8]:
+            db.execute(
+                "INSERT INTO competitor_opps (brand_id, competitor, strength, weakness, opportunity, action, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (brand_id, c.get("competitor", "竞品"), c.get("strength", ""), c.get("weakness", ""), c.get("opportunity", ""), c.get("action", ""), now()),
+            )
+            written += 1
+    elif agent_id in ("xhs", "douyin"):
+        for s in data.get("strategies", [])[:6]:
+            subtitle = s.get("subtitle") or ("小红书策略" if agent_id == "xhs" else "抖音策略")
+            db.execute(
+                "INSERT INTO strategies (brand_id, title, subtitle, priority, status, body, evidence, review_status, confidence, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (brand_id, s.get("title", "平台策略"), subtitle, s.get("priority", "P2"), "draft", s.get("body", ""), json.dumps(s.get("evidence", []), ensure_ascii=False), "pending", 78, now()),
+            )
+            new_id = db.execute("SELECT last_insert_rowid()").fetchone()[0]
+            create_review_item(db, "strategies", new_id, s.get("title", "平台策略"), s.get("body", ""), 78)
+            written += 1
+    elif agent_id == "lab":
+        for p in data.get("test_plans", [])[:6]:
+            db.execute(
+                "INSERT INTO test_plans (brand_id, objective, strategy_title, variants, budget, success_rule, status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                (brand_id, p.get("objective", ""), p.get("strategy_title", ""), p.get("variants", ""), p.get("budget", ""), p.get("success_rule", ""), p.get("status", "planned"), now()),
+            )
+            written += 1
+    elif agent_id == "dashboard":
+        for s in data.get("top_actions", [])[:5]:
+            db.execute(
+                "INSERT INTO strategies (brand_id, title, subtitle, priority, status, body, evidence, review_status, confidence, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (brand_id, s.get("title", "本周动作"), s.get("subtitle", "决策汇总"), s.get("priority", "P1"), "active", s.get("body", ""), json.dumps(s.get("evidence", []), ensure_ascii=False), "pending", 82, now()),
+            )
+            new_id = db.execute("SELECT last_insert_rowid()").fetchone()[0]
+            create_review_item(db, "strategies", new_id, s.get("title", "本周动作"), s.get("body", ""), 82)
+            written += 1
+    elif agent_id == "reviews":
+        for r in data.get("reviews", [])[:5]:
+            db.execute(
+                "INSERT INTO reviews (brand_id, title, result, attribution, next_action, created_at) VALUES (?, ?, ?, ?, ?, ?)",
+                (brand_id, r.get("title", "复盘"), r.get("result", ""), r.get("attribution", ""), r.get("next_action", ""), now()),
+            )
+            written += 1
+    return written
+
+
 def agents_for_mode(mode):
     if mode == "insight":
         ids = {"comments", "content", "demands", "barriers", "competitors"}
@@ -823,9 +1130,10 @@ def agents_for_mode(mode):
 
 def run_ai_orchestration(db, mode):
     started_run = time.time()
+    brand_id = active_brand_id(db)
     db.execute(
-        "INSERT INTO ai_runs (mode, status, summary, tokens, latency_ms, created_at) VALUES (?, ?, ?, ?, ?, ?)",
-        (mode, "running", "Agent pipeline started", 0, 0, now()),
+        "INSERT INTO ai_runs (brand_id, mode, status, summary, tokens, latency_ms, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+        (brand_id, mode, "running", "Agent pipeline started", 0, 0, now()),
     )
     run_id = db.execute("SELECT last_insert_rowid()").fetchone()[0]
     total_tokens = 0
@@ -838,8 +1146,8 @@ def run_ai_orchestration(db, mode):
         ctx = collect_agent_context(db)
         summary = input_summary(ctx)
         db.execute(
-            "INSERT INTO ai_run_steps (run_id, agent_id, agent_name, layer, status, input_summary, started_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
-            (run_id, agent["id"], agent["name"], agent["layer"], "running", summary, now()),
+            "INSERT INTO ai_run_steps (brand_id, run_id, agent_id, agent_name, layer, status, input_summary, started_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            (brand_id, run_id, agent["id"], agent["name"], agent["layer"], "running", summary, now()),
         )
         step_id = db.execute("SELECT last_insert_rowid()").fetchone()[0]
         tokens = 0
@@ -883,6 +1191,196 @@ def run_ai_orchestration(db, mode):
     return {"id": run_id, "status": status, "summary": summary, "tokens": total_tokens, "latency_ms": run_latency, "steps": steps}
 
 
+def brands_payload(db):
+    brands = [rowdict(r) for r in db.execute("SELECT * FROM brands ORDER BY is_active DESC, id DESC")]
+    for brand in brands:
+        try:
+            brand["categories"] = json.loads(brand.get("categories") or "[]")
+        except json.JSONDecodeError:
+            brand["categories"] = []
+    return {"active_brand_id": active_brand_id(db), "items": brands}
+
+
+def save_brand(db, payload):
+    brand_id = payload.get("id")
+    categories = payload.get("categories", [])
+    if isinstance(categories, str):
+        categories = [x.strip() for x in re.split(r"[,，\n]", categories) if x.strip()]
+    values = (
+        payload.get("name") or "未命名品牌",
+        payload.get("industry", ""),
+        payload.get("slogan", ""),
+        payload.get("positioning", ""),
+        json.dumps(categories, ensure_ascii=False),
+        now(),
+    )
+    if brand_id:
+        db.execute(
+            "UPDATE brands SET name = ?, industry = ?, slogan = ?, positioning = ?, categories = ?, updated_at = ? WHERE id = ?",
+            (*values, int(brand_id)),
+        )
+        return rowdict(db.execute("SELECT * FROM brands WHERE id = ?", (int(brand_id),)).fetchone())
+    db.execute(
+        "INSERT INTO brands (name, industry, slogan, positioning, categories, is_active, created_at, updated_at) VALUES (?, ?, ?, ?, ?, 0, ?, ?)",
+        (values[0], values[1], values[2], values[3], values[4], now(), now()),
+    )
+    return rowdict(db.execute("SELECT * FROM brands WHERE id = last_insert_rowid()").fetchone())
+
+
+def switch_brand(db, brand_id):
+    brand = rowdict(db.execute("SELECT * FROM brands WHERE id = ?", (brand_id,)).fetchone())
+    if not brand:
+        raise ValueError("Brand not found")
+    db.execute("UPDATE brands SET is_active = CASE WHEN id = ? THEN 1 ELSE 0 END", (brand_id,))
+    set_active_brand(db, brand_id)
+    profile = {
+        "name": brand["name"],
+        "industry": brand["industry"],
+        "slogan": brand["slogan"],
+        "positioning": brand["positioning"],
+        "categories": json.loads(brand.get("categories") or "[]"),
+    }
+    db.execute("UPDATE brand_profile SET data = ?, updated_at = ? WHERE id = 1", (json.dumps(profile, ensure_ascii=False), now()))
+    return brands_payload(db)
+
+
+def import_history(db):
+    return {"items": [rowdict(r) for r in db.execute("SELECT * FROM import_batches WHERE brand_id = ? ORDER BY id DESC LIMIT 100", (active_brand_id(db),))]}
+
+
+def review_workbench(db):
+    return {
+        "items": [rowdict(r) for r in db.execute("SELECT * FROM review_items WHERE brand_id = ? ORDER BY CASE status WHEN 'pending' THEN 0 WHEN 'approved' THEN 1 ELSE 2 END, id DESC LIMIT 200", (active_brand_id(db),))],
+        "counts": {
+            row["status"]: row["count"]
+            for row in db.execute("SELECT status, COUNT(*) AS count FROM review_items WHERE brand_id = ? GROUP BY status", (active_brand_id(db),))
+        },
+    }
+
+
+def update_review_item(db, payload):
+    item_id = int(payload.get("id", 0) or 0)
+    status = payload.get("status", "pending")
+    if status not in {"pending", "approved", "rejected"}:
+        raise ValueError("Invalid review status")
+    notes = payload.get("notes", "")
+    confidence = int(payload.get("confidence", 70) or 70)
+    db.execute(
+        "UPDATE review_items SET status = ?, notes = ?, confidence = ?, updated_at = ? WHERE id = ? AND brand_id = ?",
+        (status, notes, confidence, now(), item_id, active_brand_id(db)),
+    )
+    item = rowdict(db.execute("SELECT * FROM review_items WHERE id = ? AND brand_id = ?", (item_id, active_brand_id(db))).fetchone())
+    if item and item["source_table"] in {"strategies", "demands", "barriers"}:
+        db.execute(f"UPDATE {item['source_table']} SET review_status = ? WHERE id = ? AND brand_id = ?", (status, item["source_id"], active_brand_id(db)))
+    return item
+
+
+def create_brief_from_strategy(db, payload):
+    brand_id = active_brand_id(db)
+    strategy_id = int(payload.get("strategy_id", 0) or 0)
+    strategy = rowdict(db.execute("SELECT * FROM strategies WHERE id = ? AND brand_id = ?", (strategy_id, brand_id)).fetchone())
+    if not strategy:
+        raise ValueError("Strategy not found")
+    platform = "小红书" if "小红书" in (strategy["title"] + strategy["subtitle"]) else "抖音" if "抖音" in (strategy["title"] + strategy["subtitle"]) else "通用"
+    db.execute(
+        """
+        INSERT INTO briefs (brand_id, strategy_id, title, platform, objective, audience, key_message, content_outline, kpi, budget, status, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft', ?)
+        """,
+        (
+            brand_id,
+            strategy_id,
+            "Brief - " + strategy["title"][:80],
+            platform,
+            payload.get("objective") or "将策略卡转化为可执行内容任务",
+            payload.get("audience") or "内容/投放/达人协作团队",
+            strategy["subtitle"],
+            strategy["body"],
+            payload.get("kpi") or "CTR、CVR、互动率、负面评论占比",
+            payload.get("budget") or "",
+            now(),
+        ),
+    )
+    return rowdict(db.execute("SELECT * FROM briefs WHERE id = last_insert_rowid()").fetchone())
+
+
+def export_briefs_csv(db):
+    rows = [rowdict(r) for r in db.execute("SELECT title, platform, objective, audience, key_message, content_outline, kpi, budget, status, created_at FROM briefs WHERE brand_id = ? ORDER BY id DESC", (active_brand_id(db),))]
+    headers = ["title", "platform", "objective", "audience", "key_message", "content_outline", "kpi", "budget", "status", "created_at"]
+    lines = [",".join(headers)]
+    for row in rows:
+        values = []
+        for header in headers:
+            value = str(row.get(header, "")).replace('"', '""')
+            values.append(f'"{value}"')
+        lines.append(",".join(values))
+    return "\ufeff" + "\n".join(lines)
+
+
+def global_search(db, query):
+    q = f"%{query.strip()}%"
+    if not query.strip():
+        return {"items": []}
+    brand_id = active_brand_id(db)
+    searches = [
+        ("评论", "comments", "content", "author"),
+        ("需求", "demands", "text", "action"),
+        ("障碍", "barriers", "text", "solution"),
+        ("策略", "strategies", "title", "body"),
+        ("报告", "reports", "title", "scope"),
+        ("知识", "knowledge_tags", "tag", "note"),
+    ]
+    items = []
+    for label, table, title_col, body_col in searches:
+        for row in db.execute(f"SELECT id, {title_col} AS title, {body_col} AS body FROM {table} WHERE brand_id = ? AND ({title_col} LIKE ? OR {body_col} LIKE ?) ORDER BY id DESC LIMIT 10", (brand_id, q, q)):
+            items.append({"type": label, "source": table, "id": row["id"], "title": row["title"], "body": row["body"]})
+    return {"items": items[:50]}
+
+
+def generate_report(db, payload):
+    brand_id = active_brand_id(db)
+    audience = payload.get("audience", "老板/管理层")
+    data = dashboard(db)
+    top_actions = "\n".join([f"- {x['priority']} {x['title']}: {x.get('body', '')}" for x in data["actions"][:5]])
+    body = f"目标读者：{audience}\n\n核心指标：{json.dumps(data['metrics'], ensure_ascii=False)}\n\n本周优先动作：\n{top_actions}"
+    db.execute(
+        "INSERT INTO reports (brand_id, title, audience, scope, cadence, body, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+        (brand_id, payload.get("title") or f"{audience}报告", audience, "自动汇总全模块数据", payload.get("cadence", "weekly"), body, now()),
+    )
+    return rowdict(db.execute("SELECT * FROM reports WHERE id = last_insert_rowid()").fetchone())
+
+
+def infer_knowledge(db):
+    brand_id = active_brand_id(db)
+    inserted = 0
+    for row in db.execute("SELECT category AS dimension, text AS tag, action AS note FROM demands WHERE brand_id = ? ORDER BY id DESC LIMIT 8", (brand_id,)):
+        db.execute(
+            "INSERT INTO knowledge_tags (brand_id, dimension, tag, note, confidence, created_at) VALUES (?, ?, ?, ?, ?, ?)",
+            (brand_id, row["dimension"], row["tag"][:80], row["note"], 76, now()),
+        )
+        inserted += 1
+    return {"inserted": inserted}
+
+
+def create_weekly_snapshot(db):
+    brand_id = active_brand_id(db)
+    metrics = dashboard(db)["metrics"]
+    week_start = datetime.now().strftime("%Y-W%U")
+    summary = f"评论 {metrics['comments']} 条，需求 {metrics['demands']} 条，策略 {metrics['strategies']} 张。"
+    db.execute(
+        "INSERT INTO weekly_snapshots (brand_id, week_start, metrics, summary, created_at) VALUES (?, ?, ?, ?, ?)",
+        (brand_id, week_start, json.dumps(metrics, ensure_ascii=False), summary, now()),
+    )
+    return rowdict(db.execute("SELECT * FROM weekly_snapshots WHERE id = last_insert_rowid()").fetchone())
+
+
+def clear_demo_data(db):
+    brand_id = active_brand_id(db)
+    for table in ["comments", "demands", "barriers", "strategies", "competitor_opps", "content_items", "test_plans", "reviews", "reports", "knowledge_tags", "ai_runs", "import_batches", "review_items", "briefs", "weekly_snapshots"]:
+        db.execute(f"DELETE FROM {table} WHERE brand_id = ?", (brand_id,))
+    return {"ok": True, "brand_id": brand_id}
+
+
 class Handler(SimpleHTTPRequestHandler):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, directory=str(PUBLIC), **kwargs)
@@ -894,6 +1392,14 @@ class Handler(SimpleHTTPRequestHandler):
         raw = json.dumps(data, ensure_ascii=False).encode("utf-8")
         self.send_response(status)
         self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.send_header("Content-Length", str(len(raw)))
+        self.end_headers()
+        self.wfile.write(raw)
+
+    def send_text(self, text, content_type="text/plain; charset=utf-8", status=200):
+        raw = text.encode("utf-8")
+        self.send_response(status)
+        self.send_header("Content-Type", content_type)
         self.send_header("Content-Length", str(len(raw)))
         self.end_headers()
         self.wfile.write(raw)
@@ -914,44 +1420,59 @@ class Handler(SimpleHTTPRequestHandler):
                     return self.send_json({"ok": True, "db": str(DB_PATH), "time": now()})
                 if parsed.path == "/api/dashboard":
                     return self.send_json(dashboard(db))
+                if parsed.path == "/api/brands":
+                    return self.send_json(brands_payload(db))
                 if parsed.path == "/api/comments":
                     return self.send_json({"items": list_comments(db, parsed.query)})
                 if parsed.path == "/api/demands":
-                    return self.send_json({"items": list_table(db, "demands", "frequency DESC, id DESC", 100)})
+                    return self.send_json({"items": list_brand_table(db, "demands", "frequency DESC, id DESC", 100)})
                 if parsed.path == "/api/barriers":
-                    return self.send_json({"items": list_table(db, "barriers", "count DESC, id DESC", 100)})
+                    return self.send_json({"items": list_brand_table(db, "barriers", "count DESC, id DESC", 100)})
                 if parsed.path == "/api/competitors":
-                    return self.send_json({"items": list_table(db, "competitor_opps", "id DESC", 100)})
+                    return self.send_json({"items": list_brand_table(db, "competitor_opps", "id DESC", 100)})
                 if parsed.path == "/api/strategies":
-                    return self.send_json({"items": list_table(db, "strategies", "id DESC", 100)})
+                    return self.send_json({"items": list_brand_table(db, "strategies", "id DESC", 100)})
                 if parsed.path == "/api/content":
-                    return self.send_json({"items": list_table(db, "content_items", "id DESC", 100)})
+                    return self.send_json({"items": list_brand_table(db, "content_items", "id DESC", 100)})
                 if parsed.path == "/api/lab":
-                    return self.send_json({"items": list_table(db, "test_plans", "id DESC", 100)})
+                    return self.send_json({"items": list_brand_table(db, "test_plans", "id DESC", 100)})
                 if parsed.path == "/api/reviews":
-                    return self.send_json({"items": list_table(db, "reviews", "id DESC", 100)})
+                    return self.send_json({"items": list_brand_table(db, "reviews", "id DESC", 100)})
                 if parsed.path == "/api/reports":
-                    return self.send_json({"items": list_table(db, "reports", "id DESC", 100)})
+                    return self.send_json({"items": list_brand_table(db, "reports", "id DESC", 100)})
                 if parsed.path == "/api/knowledge":
-                    return self.send_json({"items": list_table(db, "knowledge_tags", "dimension ASC, id DESC", 200)})
+                    return self.send_json({"items": list_brand_table(db, "knowledge_tags", "dimension ASC, id DESC", 200)})
+                if parsed.path == "/api/imports":
+                    return self.send_json(import_history(db))
+                if parsed.path == "/api/review":
+                    return self.send_json(review_workbench(db))
+                if parsed.path == "/api/briefs":
+                    return self.send_json({"items": list_brand_table(db, "briefs", "id DESC", 100)})
+                if parsed.path == "/api/briefs/export":
+                    return self.send_text(export_briefs_csv(db), "text/csv; charset=utf-8")
+                if parsed.path == "/api/search":
+                    return self.send_json(global_search(db, parse_qs(parsed.query).get("q", [""])[0]))
+                if parsed.path == "/api/snapshots":
+                    return self.send_json({"items": list_brand_table(db, "weekly_snapshots", "id DESC", 100)})
                 if parsed.path == "/api/modules":
                     return self.send_json({"items": module_matrix(db)})
                 if parsed.path == "/api/agents":
                     return self.send_json(agent_flow(db))
                 if parsed.path == "/api/brand":
-                    row = rowdict(db.execute("SELECT data, updated_at FROM brand_profile WHERE id = 1").fetchone())
-                    return self.send_json({"data": json.loads(row["data"]), "updated_at": row["updated_at"]})
+                    brand = rowdict(db.execute("SELECT * FROM brands WHERE id = ?", (active_brand_id(db),)).fetchone())
+                    brand["categories"] = json.loads(brand.get("categories") or "[]")
+                    return self.send_json({"data": brand, "updated_at": brand["updated_at"]})
                 if parsed.path == "/api/ai/settings":
                     return self.send_json(ai_settings(db))
                 if parsed.path == "/api/ai/runs":
-                    return self.send_json({"items": list_table(db, "ai_runs", "id DESC", 30)})
+                    return self.send_json({"items": list_brand_table(db, "ai_runs", "id DESC", 30)})
                 if parsed.path == "/api/ai/steps":
                     params = parse_qs(parsed.query)
                     run_id = params.get("run_id", [""])[0]
                     if run_id:
-                        rows = [rowdict(r) for r in db.execute("SELECT * FROM ai_run_steps WHERE run_id = ? ORDER BY id", (run_id,))]
+                        rows = [rowdict(r) for r in db.execute("SELECT * FROM ai_run_steps WHERE run_id = ? AND brand_id = ? ORDER BY id", (run_id, active_brand_id(db)))]
                     else:
-                        rows = list_table(db, "ai_run_steps", "id DESC", 50)
+                        rows = list_brand_table(db, "ai_run_steps", "id DESC", 50)
                     return self.send_json({"items": rows})
         except Exception as exc:
             return self.send_json({"error": str(exc)}, 500)
@@ -964,14 +1485,49 @@ class Handler(SimpleHTTPRequestHandler):
         try:
             payload = self.read_json()
             with connect() as db:
+                if parsed.path == "/api/brands":
+                    return self.send_json(save_brand(db, payload))
+                if parsed.path == "/api/brands/switch":
+                    return self.send_json(switch_brand(db, int(payload.get("id", 1))))
+                if parsed.path == "/api/brands/delete":
+                    brand_id = int(payload.get("id", 0) or 0)
+                    if brand_id == 1 or brand_id == active_brand_id(db):
+                        return self.send_json({"error": "Cannot delete default or active brand"}, 400)
+                    db.execute("DELETE FROM brands WHERE id = ?", (brand_id,))
+                    return self.send_json(brands_payload(db))
                 if parsed.path == "/api/comments/import":
                     fmt = payload.get("format", "csv")
                     rows = payload.get("rows")
                     if rows is None:
                         text = payload.get("text", "")
                         rows = json.loads(text) if fmt == "json" else parse_csv_payload(text)
-                    count = insert_comments(db, rows)
-                    return self.send_json({"imported": count, "dashboard": dashboard(db)})
+                    brand_id = active_brand_id(db)
+                    db.execute(
+                        "INSERT INTO import_batches (brand_id, source, mode, total_rows, inserted_rows, duplicate_rows, status, created_at) VALUES (?, ?, ?, ?, 0, 0, 'running', ?)",
+                        (brand_id, payload.get("source", "manual"), payload.get("mode", "manual"), len(rows), now()),
+                    )
+                    batch_id = db.execute("SELECT last_insert_rowid()").fetchone()[0]
+                    result = insert_comments(db, rows, brand_id=brand_id, import_batch_id=batch_id, dedupe=payload.get("dedupe", True))
+                    run = None
+                    if payload.get("incremental"):
+                        run = run_ai_orchestration(db, "insight")
+                    db.execute(
+                        "UPDATE import_batches SET inserted_rows = ?, duplicate_rows = ?, status = 'success', run_id = ? WHERE id = ?",
+                        (result["inserted"], result["duplicates"], run["id"] if run else None, batch_id),
+                    )
+                    return self.send_json({"batch_id": batch_id, "imported": result["inserted"], "duplicates": result["duplicates"], "total": result["total"], "run": run, "dashboard": dashboard(db)})
+                if parsed.path == "/api/review/update":
+                    return self.send_json(update_review_item(db, payload))
+                if parsed.path == "/api/briefs/from-strategy":
+                    return self.send_json(create_brief_from_strategy(db, payload))
+                if parsed.path == "/api/reports/generate":
+                    return self.send_json(generate_report(db, payload))
+                if parsed.path == "/api/knowledge/infer":
+                    return self.send_json(infer_knowledge(db))
+                if parsed.path == "/api/snapshots/weekly":
+                    return self.send_json(create_weekly_snapshot(db))
+                if parsed.path == "/api/system/clear-demo":
+                    return self.send_json(clear_demo_data(db))
                 if parsed.path == "/api/ai/settings":
                     return self.send_json(save_ai_settings(db, payload))
                 if parsed.path == "/api/ai/run":
@@ -987,6 +1543,9 @@ class Handler(SimpleHTTPRequestHandler):
         try:
             payload = self.read_json()
             with connect() as db:
+                payload["id"] = active_brand_id(db)
+                brand = save_brand(db, payload)
+                switch_brand(db, int(brand["id"]))
                 db.execute("UPDATE brand_profile SET data = ?, updated_at = ? WHERE id = 1", (json.dumps(payload, ensure_ascii=False), now()))
             return self.send_json({"ok": True})
         except Exception as exc:

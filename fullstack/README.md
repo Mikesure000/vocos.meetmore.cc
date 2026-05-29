@@ -26,8 +26,18 @@ http://127.0.0.1:8090
 
 - `GET /api/health`
 - `GET /api/dashboard`
+- `GET /api/brands`
+- `POST /api/brands`
+- `POST /api/brands/switch`
 - `GET /api/comments`
 - `POST /api/comments/import`
+- `GET /api/imports`
+- `GET /api/review`
+- `POST /api/review/update`
+- `GET /api/briefs`
+- `POST /api/briefs/from-strategy`
+- `GET /api/briefs/export`
+- `GET /api/search?q=keyword`
 - `GET /api/demands`
 - `GET /api/barriers`
 - `GET /api/strategies`
@@ -39,8 +49,20 @@ http://127.0.0.1:8090
 - `GET /api/ai/runs`
 - `GET /api/ai/steps`
 - `GET /api/agents`
+- `POST /api/snapshots/weekly`
+- `POST /api/system/clear-demo`
 
 For production, move AI secrets to environment variables or a secret manager instead of SQLite.
+
+## Iteration Scope
+
+The current version implements the five-epic iteration plan:
+
+- Multi-brand workspaces with brand creation, editing, switching, and shared category tags.
+- Continuous import with deduplication, import history, and optional incremental AI analysis.
+- Human review workbench for AI outputs with pending, approved, rejected states and confidence scores.
+- Strategy-to-Brief conversion with CSV export for execution handoff.
+- System repair utilities including report generation, knowledge inference, global search, weekly snapshots, and demo-data clearing.
 
 ## GitHub Sync
 
