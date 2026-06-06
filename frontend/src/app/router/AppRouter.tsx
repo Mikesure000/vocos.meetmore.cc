@@ -47,6 +47,9 @@ const QualityDashboard = lazy(() => import('../../features/admin/QualityDashboar
 const SkillDashboard = lazy(() => import('../../features/admin/SkillDashboard'));
 const BrandListPage = lazy(() => import('../../features/brand/BrandListPage'));
 const BrandKnowledgePage = lazy(() => import('../../features/brand/BrandKnowledgePage'));
+const CategoryListPage = lazy(() => import('../../features/category/CategoryListPage'));
+const CategoryKnowledgePage = lazy(() => import('../../features/category/CategoryKnowledgePage'));
+const PostPublishReviewPage = lazy(() => import('../../features/review/PostPublishReviewPage'));
 
 function Loading() {
   return (
@@ -113,6 +116,10 @@ export default function AppRouter() {
             <Route path="/settings/team" element={<TeamSettings />} />
             <Route path="/brands" element={<BrandListPage />} />
             <Route path="/brands/:id/knowledge" element={<BrandKnowledgePage />} />
+            <Route path="/category" element={<CategoryListPage />} />
+            <Route path="/category/:id/knowledge" element={<CategoryKnowledgePage />} />
+            <Route path="/projects/:id/tasks/:taskId/post-review" element={<PostPublishReviewPage />} />
+            <Route path="/post-publish-review" element={<PostPublishReviewPage />} />
           </Route>
 
           {/* Admin */}

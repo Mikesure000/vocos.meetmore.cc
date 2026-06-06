@@ -32,6 +32,7 @@ model User {
   shareLinks      ShareLink[] @relation("ShareLinkCreator")
   auditLogs       AuditLog[]
   aiRuns          AiRun[] @relation("AiRunCreator")
+  reviewCreators  PostPublishReview[] @relation("ReviewCreator")
 
   @@map("users")
 }
@@ -76,12 +77,36 @@ model TeamMember {
 }
 
 // ============================================================
+// 品类
+// ============================================================
+
+model Category {
+  id                  String   @id @default(uuid())
+  name                String   @unique // 美妆护肤 / 母婴健康 / 功效食品
+  slug                String   @unique // beauty / maternal / functional-food
+  icon                String?  // emoji icon
+  description         String?
+  knowledgeBase       String   // JSON: 品类专业知识 (肤质/成分/适龄/安全/功效边界等)
+  complianceRules     String   // JSON: 合规规则列表
+  platformMethodology String   // JSON: { douyin: {...}, xiaohongshu: {...} }
+  sortOrder           Int      @default(0) @map("sort_order")
+  status              String   @default("active")
+  createdAt           DateTime @default(now()) @map("created_at")
+  updatedAt           DateTime @updatedAt @map("updated_at")
+
+  projects Project[]
+
+  @@map("categories")
+}
+
+// ============================================================
 // 项目
 // ============================================================
 
 model Project {
   id          String   @id @default(uuid())
   teamId      String   @map("team_id")
+  categoryId  String?  @map("category_id")
   projectName String   @map("project_name")
   brandName   String?  @map("brand_name")
   productName String?  @map("product_name")
@@ -93,8 +118,9 @@ model Project {
   updatedAt   DateTime @updatedAt @map("updated_at")
   deletedAt   DateTime? @map("deleted_at")
 
-  team     Team           @relation(fields: [teamId], references: [id])
-  creator  User           @relation("ProjectCreator", fields: [createdBy], references: [id])
+  team     Team      @relation(fields: [teamId], references: [id])
+  category Category? @relation(fields: [categoryId], references: [id])
+  creator  User      @relation("ProjectCreator", fields: [createdBy], references: [id])
   tasks    AnalysisTask[]
 
   @@map("projects")
@@ -143,6 +169,7 @@ model AnalysisTask {
   prePublishChecks    PrePublishCheck[]
   reports             Report[]
   aiRuns              AiRun[]
+  postPublishReviews  PostPublishReview[]
 
   @@map("analysis_tasks")
 }
@@ -341,6 +368,33 @@ model PrePublishCheck {
   task AnalysisTask @relation(fields: [taskId], references: [id])
 
   @@map("pre_publish_checks")
+}
+
+// ============================================================
+// 发布后复盘
+// ============================================================
+
+model PostPublishReview {
+  id                       String   @id @default(uuid())
+  taskId                   String   @map("task_id")
+  newContentUrl            String?  @map("new_content_url")
+  newContentTitle          String?  @map("new_content_title")
+  newContentBody           String?  @map("new_content_body")
+  newCommentFileId         String?  @map("new_comment_file_id")
+  metrics                  String?  // JSON: { clickRate, collectRate, conversionRate, commentSentiment }
+  strategyExecutionScore   Int      @default(0) @map("strategy_execution_score") // 0-100
+  commentChangeAssessment  String?  @map("comment_change_assessment") // JSON: 变化分析
+  nextRoundSuggestions     String?  @map("next_round_suggestions") // JSON: 下轮建议
+  cardEffectivenessScore   Int      @default(0) @map("card_effectiveness_score") // 0-100
+  status                   String   @default("draft") // draft, completed
+  createdBy                String   @map("created_by")
+  createdAt                DateTime @default(now()) @map("created_at")
+  updatedAt                DateTime @updatedAt @map("updated_at")
+
+  task    AnalysisTask @relation(fields: [taskId], references: [id])
+  creator User         @relation("ReviewCreator", fields: [createdBy], references: [id])
+
+  @@map("post_publish_reviews")
 }
 
 // ============================================================

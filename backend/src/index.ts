@@ -22,6 +22,8 @@ import { commentDetailRoutes } from './modules/comment/comment-detail.routes.js'
 import { aiGovernanceRoutes } from './modules/ai/ai-governance.routes.js';
 import { skillRoutes } from './modules/ai/skills/routes.js';
 import { learnerRoutes } from './modules/ai/skills/learner-routes.js';
+import { categoryRoutes } from './modules/category/category.routes.js';
+import { reviewRoutes } from './modules/review/review.routes.js';
 import { registerErrorHandler } from './middleware/error-handler.js';
 
 const app = Fastify({ logger: env.NODE_ENV === 'development' });
@@ -55,6 +57,8 @@ await app.register(aiGovernanceRoutes, { prefix: '/api/admin' });
 
 await app.register(skillRoutes, { prefix: '/api' });
 await app.register(learnerRoutes, { prefix: '/api' });
+await app.register(categoryRoutes, { prefix: '/api' });
+await app.register(reviewRoutes, { prefix: '/api' });
 
 // Error handler (must be registered after all routes)
 registerErrorHandler(app);

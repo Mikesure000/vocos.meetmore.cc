@@ -35,6 +35,13 @@ import {
   ExpandLess,
   ExpandMore,
   FileDownload as ExportIcon,
+  Category as CategoryIcon,
+  CleaningServices as CleaningIcon,
+  Star as StarIcon,
+  Link as LinkIcon,
+  Replay as ReviewIcon,
+  ContentPaste as CardIcon,
+  Analytics as AnalyticsIcon,
 } from '@mui/icons-material';
 import Topbar from './Topbar';
 import { useAuthStore } from '../../shared/stores/authStore';
@@ -59,16 +66,25 @@ interface NavItem {
 
 const navGroups: NavGroup[] = [
   {
-    label: '概览',
+    label: '工作空间',
     items: [
       { label: '工作台', icon: <DashboardIcon />, path: '/workspace' },
       { label: '项目管理', icon: <ProjectIcon />, path: '/projects' },
+      { label: '发布后复盘', icon: <ReviewIcon />, path: '/post-publish-review' },
     ],
   },
   {
-    label: '品牌资产',
+    label: '品类与品牌',
     items: [
+      { label: '品类知识库', icon: <CategoryIcon />, path: '/category' },
       { label: '品牌管理', icon: <BrandIcon />, path: '/brands' },
+    ],
+  },
+  {
+    label: '设置',
+    items: [
+      { label: '个人设置', icon: <SettingsIcon />, path: '/settings' },
+      { label: '团队设置', icon: <CollaborateIcon />, path: '/settings/team' },
     ],
   },
 ];
