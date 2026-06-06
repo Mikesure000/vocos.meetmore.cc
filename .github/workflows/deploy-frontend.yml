@@ -24,7 +24,7 @@ jobs:
 
       - name: Inject API base URL
         run: |
-          sed -i "s|__VOCOS_API_BASE__|https://api.meetmore.cc|g" frontend/index.html
+          sed -i "s|__VOCOS_API_BASE__|https://vocosai-backend-267079-5-1302802083.sh.run.tcloudbase.com|g" frontend/index.html
 
       - name: Install dependencies
         run: cd frontend && npm ci
