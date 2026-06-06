@@ -1,5 +1,44 @@
 # VocosAI 版本记录
 
+## v3.0.0 — 蓝图重构：品类系统+复盘闭环+全链路迁移 (2026-06-06)
+
+### 产品定位升级
+从"宽泛的 AI Agent 平台"转型为**三大品类（美妆护肤/母婴健康/功效食品）AI 内容策略生产系统**，
+以"内容-评论归因→内容生产卡"为唯一核心价值链。
+
+### 新增模块
+- **品类系统**：Category 数据模型 + 项目/任务全链路品类绑定 + 三大品类知识库（合规规则+平台方法论）
+- **发布后复盘**：PostPublishReview 数据模型 + 复盘页面 + 完整 CRUD API
+- **品类知识库页面**：CategoryListPage + CategoryKnowledgePage，展示品类特征/合规边界/平台方法论
+- **品类选择器**：ProjectListPage 创建对话框三选一品类卡片（💄👶🍵）
+
+### 导航重构
+```
+工作空间 → 工作台 / 项目管理 / 发布后复盘
+品类与品牌 → 品类知识库 / 品牌管理
+设置 → 个人设置 / 团队设置
+```
+原主导航从 2 分组 3 项扩展为 3 分组 7 项。
+
+### 数据库变更
+- `categories` 表：id/name/slug/knowledgeBase/complianceRules/platformMethodology
+- `projects.categoryId`：关联品类
+- `post_publish_reviews` 表：taskId/newContentUrl/metrics/strategyExecutionScore/nextRoundSuggestions
+
+### 后端新增 API
+| 路由 | 端点 |
+|------|------|
+| Category | GET /api/categories, GET /api/categories/:id, GET /api/categories/slug/:slug |
+| Review | POST /api/reviews, GET /api/reviews, GET /api/reviews/task/:taskId, GET /api/reviews/:id, PUT /api/reviews/:id |
+
+### 前端页面改造
+- `ProjectListPage`：创建对话框增加品类选择
+- `ProjectDetailPage`：显示品类 Chip（可点击跳转品类知识库）
+- `TaskCreatePage`：展示项目品类上下文 Alert
+- `AppLayout`：新增品类知识库/发布后复盘导航入口
+
+---
+
 ## v2.0.0 — 部署到 meetmore.cc (2026-06-06)
 
 ### 部署架构

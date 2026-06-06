@@ -2,17 +2,23 @@ import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
   Box, Typography, Card, CardContent, Button, TextField, MenuItem,
-  FormControl, InputLabel, Select, Chip, Grid, CircularProgress,
-  FormGroup, FormControlLabel, Checkbox,
+  FormControl, InputLabel, Select, Grid, CircularProgress,
+  FormGroup, FormControlLabel, Checkbox, Alert,
 } from '@mui/material';
-import { ArrowBack } from '@mui/icons-material';
+import { ArrowBack, Category as CategoryIcon } from '@mui/icons-material';
 import { apiClient } from '../../shared/api/client';
 import { PLATFORMS, CONTENT_GOALS, OUTPUT_OPTIONS } from '../../shared/constants/platforms';
+import type { Project } from '../../shared/types/project';
 
 export default function TaskCreatePage() {
   const { id: projectId } = useParams();
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
+  const [project, setProject] = useState<Project | null>(null);
+
+  useEffect(() => {
+    apiClient.get(`/api/projects/${projectId}`).then((r) => setProject(r.data)).catch(() => {});
+  }, [projectId]);
 
   const [form, setForm] = useState({
     taskName: '',
@@ -57,6 +63,17 @@ export default function TaskCreatePage() {
         <Button startIcon={<ArrowBack />} onClick={() => navigate(`/projects/${projectId}`)}>返回</Button>
         <Typography variant="h4" fontWeight={700}>创建分析任务</Typography>
       </Box>
+
+      {project?.category && (
+        <Alert severity="info" icon={<CategoryIcon />} sx={{ mb: 2 }}>
+          <Typography variant="body2" fontWeight={600}>
+            当前项目品类：{project.category.icon} {project.category.name}
+          </Typography>
+          <Typography variant="caption" color="text.secondary">
+            系统将自动应用该品类的知识库、合规规则和平台方法论进行分析
+          </Typography>
+        </Alert>
+      )}
 
       <Grid container spacing={3}>
         <Grid size={{ xs: 12, md: 8 }}>

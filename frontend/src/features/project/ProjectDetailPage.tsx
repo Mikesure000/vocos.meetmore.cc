@@ -30,7 +30,22 @@ export default function ProjectDetailPage() {
       <Box display="flex" alignItems="center" gap={1} mb={2}>
         <IconButton onClick={() => navigate('/projects')}><ArrowBack /></IconButton>
         <Box flex={1}>
-          <Typography variant="h4" fontWeight={700}>{project.projectName}</Typography>
+          <Box display="flex" alignItems="center" gap={1} mb={0.5}>
+            <Typography variant="h4" fontWeight={700}>
+              {project.category?.icon && <Box component="span" mr={0.5}>{project.category.icon}</Box>}
+              {project.projectName}
+            </Typography>
+            {project.category && (
+              <Chip
+                label={project.category.name}
+                size="small"
+                color="primary"
+                variant="filled"
+                onClick={() => navigate(`/category/${project.category!.id}/knowledge`)}
+                sx={{ cursor: 'pointer' }}
+              />
+            )}
+          </Box>
           {project.brandName && <Typography variant="body2" color="text.secondary">{project.brandName} · {project.industry}</Typography>}
         </Box>
         <Button variant="contained" startIcon={<Add />} onClick={() => navigate(`/projects/${id}/tasks/new`)}>
