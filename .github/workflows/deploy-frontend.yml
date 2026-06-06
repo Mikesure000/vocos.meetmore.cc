@@ -27,10 +27,10 @@ jobs:
           sed -i "s|__VOCOS_API_BASE__|https://vocosai-backend-267079-5-1302802083.sh.run.tcloudbase.com|g" frontend/index.html
 
       - name: Install dependencies
-        run: cd frontend && npm ci
+        run: cd frontend && npm install --legacy-peer-deps
 
       - name: Build
-        run: cd frontend && npm run build
+        run: cd frontend && npx vite build
 
       - name: Copy CNAME
         run: echo "vocos.meetmore.cc" > frontend/dist/CNAME
