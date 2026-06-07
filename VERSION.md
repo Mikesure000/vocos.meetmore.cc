@@ -1,5 +1,32 @@
 # VocosAI 版本记录
 
+## v3.3.0 — 内容生产卡 Mock→API 升级 (2026-06-07)
+
+### 生产卡页面全面升级
+- **DouyinCardPage / XiaohongshuCardPage 重写**：从硬编码 `const c = mockCard` 改为 API 驱动
+  - 优先从 `GET /api/production-cards?platform=` 读取 DB
+  - 无数据时展示结构化 fallback
+  - 新增「AI 重新生成」按钮 → `POST /api/production-cards/generate`
+  - 标题旁显示 🟢"AI 生成" / 🟡"示例数据" Chip
+- **analysis.service.ts**：新增 agent-11 → ProductionCard 表持久化
+- **orchestrator.ts**：Pipeline 完成后自动写入生产卡到 DB
+
+### 全洞察页面 Mock→API 状态
+
+| 页面 | 数据来源 | 状态 |
+|------|---------|------|
+| ContentBreakdownPage | DB / Mock 降级 | ✅ |
+| AttributionPage | DB / Mock 降级 | ✅ |
+| DemandMapPage | DB / Mock 降级 | ✅ |
+| BarrierMapPage | DB / Mock 降级 | ✅ |
+| StrategyCardPage | DB 原生 | ✅ |
+| DouyinCardPage | DB / API 生成 | ✅ |
+| XiaohongshuCardPage | DB / API 生成 | ✅ |
+| HighValuePage | DB 原生 | ✅ |
+| CommentInsightPage | DB 原生 | ✅ |
+
+---
+
 ## v3.2.0 — AI Pipeline ↔ DB 数据桥 (2026-06-07)
 
 ### Mock → DB 数据链路打通
