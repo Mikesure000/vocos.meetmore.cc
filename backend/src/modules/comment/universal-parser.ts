@@ -69,12 +69,20 @@ function autoDetectPlatform(headers: string[]): 'douyin' | 'xiaohongshu' | 'unkn
 }
 
 function matchField(header: string, fieldDefs: Record<string, string[]>): string | null {
+  const trimmed = header.trim();
+  // 优先精确匹配，避免"一级评论ID"误匹配为"评论ID"
+  let bestMatch: { key: string; len: number } | null = null;
   for (const [key, aliases] of Object.entries(fieldDefs)) {
     for (const alias of aliases) {
-      if (header.includes(alias)) return key;
+      if (trimmed === alias) {
+        return key; // 精确匹配直接返回
+      }
+      if (trimmed.includes(alias) && alias.length > (bestMatch?.len || 0)) {
+        bestMatch = { key, len: alias.length };
+      }
     }
   }
-  return null;
+  return bestMatch?.key || null;
 }
 
 function autoMap(headers: string[], platform: string): Record<string, string> {
@@ -152,8 +160,12 @@ function parseFile(filePath: string): ParseResult {
     else if (text.length > 20) score = 2;
 
     let cleanStatus = 'valid';
-    if (text.length <= 2 && !signals.length) cleanStatus = 'short_invalid';
-    else if (/^(ddd+|666+|顶|赞)$/i.test(text) && text.length <= 3) cleanStatus = 'spam';
+    // v4.2 fix: 中文2字符评论有意义("支持""好！""试试")，只有1字符或无意义短评才标记
+    if (text.length <= 1 || (text.length <= 2 && !/[\u4e00-\u9fa5]/.test(text))) {
+      cleanStatus = 'short_invalid';
+    } else if (/^(ddd+|666+|顶|赞|冲冲冲|牛)$/i.test(text) && text.length <= 3 && !/[\u4e00-\u9fa5]{2,}/.test(text)) {
+      cleanStatus = 'spam';
+    }
 
     const parentId = parseValue(row, mapping, 'parent_comment_id') || null;
     const isReply = !!parentId;
