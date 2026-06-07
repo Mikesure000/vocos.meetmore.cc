@@ -1,125 +1,85 @@
+import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
-  Box, Typography, Card, CardContent, Button, Grid, Chip,
-  LinearProgress, Alert, List, ListItem, ListItemIcon, ListItemText, Divider,
+  Box, Typography, Card, CardContent, Button, Grid, Chip, CircularProgress,
+  LinearProgress, Alert, Table, TableBody, TableCell, TableRow, TableHead,
 } from '@mui/material';
-import { ArrowBack, CheckCircle, Warning, Error, TrendingUp } from '@mui/icons-material';
-
-const dimensions = [
-  { label: '人群清晰度', weight: 15, score: 80 },
-  { label: '卖点清晰度', weight: 15, score: 65 },
-  { label: '购买理由', weight: 15, score: 70 },
-  { label: '评论风险', weight: 15, score: 85 },
-  { label: '合规风险', weight: 15, score: 90 },
-  { label: '素材稳定性', weight: 10, score: 75 },
-  { label: '可剪辑复用性', weight: 10, score: 60 },
-  { label: '转化承接', weight: 15, score: 55 },
-];
+import { ArrowBack, TrendingUp, Warning, CheckCircle, AutoAwesome } from '@mui/icons-material';
+import { apiClient } from '../../shared/api/client';
 
 export default function AdFitPage() {
   const { id: projectId, taskId } = useParams();
   const navigate = useNavigate();
+  const [data, setData] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+  const [generating, setGenerating] = useState(false);
 
-  const totalScore = Math.round(dimensions.reduce((s, d) => s + d.score * (d.weight / 100), 0));
+  useEffect(() => {
+    apiClient.get(`/api/tasks/${taskId}/ad-fit`).then(r => setData(r.data)).catch(() => {}).finally(() => setLoading(false));
+  }, [taskId]);
+
+  const handleGenerate = async () => {
+    setGenerating(true);
+    try { const r = await apiClient.post(`/api/tasks/${taskId}/ad-fit/generate`); setData(r.data); } catch {}
+    finally { setGenerating(false); }
+  };
+
+  if (loading) return <Box display="flex" justifyContent="center" py={8}><CircularProgress /></Box>;
+  if (!data) return <Typography>暂无数据</Typography>;
+
+  const isMock = data._source === 'mock';
+  const scoreColor = (data.score || 0) >= 80 ? 'success.main' : (data.score || 0) >= 60 ? 'warning.main' : 'error.main';
 
   return (
     <Box>
-      <Box display="flex" alignItems="center" gap={1} mb={3}>
-        <Button startIcon={<ArrowBack />} onClick={() => navigate(`/projects/${projectId}/tasks/${taskId}/insights`)}>返回</Button>
+      <Box display="flex" alignItems="center" gap={1} mb={1}>
+        <Button startIcon={<ArrowBack />} onClick={() => navigate(`/projects/${projectId}/tasks/${taskId}/strategy`)}>返回</Button>
         <Typography variant="h4" fontWeight={700}>投流适配评分</Typography>
+        <Chip label={isMock ? '示例数据' : 'AI 分析'} size="small" color={isMock ? 'warning' : 'success'} variant="outlined" />
       </Box>
 
-      {/* Score Card */}
-      <Card sx={{ mb: 3, textAlign: 'center', py: 3 }}>
-        <CardContent>
-          <Typography variant="h2" fontWeight={700} color={totalScore >= 70 ? 'success.main' : totalScore >= 50 ? 'warning.main' : 'error.main'}>
-            {totalScore}<Typography component="span" variant="h4">/100</Typography>
-          </Typography>
-          <Chip
-            label={totalScore >= 70 ? '建议投流测试' : totalScore >= 50 ? '建议优化后再测' : '不建议投流'}
-            color={totalScore >= 70 ? 'success' : totalScore >= 50 ? 'warning' : 'error'}
-            sx={{ mt: 1, fontWeight: 600 }}
-          />
-          <Typography variant="body1" mt={2} color="text.secondary">
-            适合小预算测试，不建议直接大预算放量
-          </Typography>
-        </CardContent>
-      </Card>
+      <Box display="flex" justifyContent="flex-end" mb={2}>
+        <Button variant="outlined" startIcon={<AutoAwesome />} onClick={handleGenerate} disabled={generating}>{generating ? '生成中...' : 'AI 重新评估'}</Button>
+      </Box>
+
+      {isMock && <Alert severity="warning" sx={{ mb: 2 }}>当前展示示例数据。启动分析任务后将基于真实评论生成投流评估。</Alert>}
 
       <Grid container spacing={3}>
-        {/* Dimension Scores */}
-        <Grid size={{ xs: 12, md: 7 }}>
-          <Card>
-            <CardContent>
-              <Typography variant="h6" gutterBottom>评分维度</Typography>
-              {dimensions.map((dim) => (
-                <Box key={dim.label} mb={2}>
-                  <Box display="flex" justifyContent="space-between" mb={0.5}>
-                    <Typography variant="body2">{dim.label}</Typography>
-                    <Typography variant="body2" fontWeight={600}>{dim.score}/100 (权重 {dim.weight}%)</Typography>
-                  </Box>
-                  <LinearProgress
-                    variant="determinate"
-                    value={dim.score}
-                    sx={{
-                      height: 8,
-                      borderRadius: 4,
-                      backgroundColor: 'action.hover',
-                      '& .MuiLinearProgress-bar': {
-                        backgroundColor: dim.score >= 80 ? '#4caf50' : dim.score >= 60 ? '#ff9800' : '#f44336',
-                      },
-                    }}
-                  />
+        <Grid size={4}>
+          <Card><CardContent sx={{ textAlign: 'center', py: 3 }}>
+            <Typography variant="h2" fontWeight={700} color={scoreColor}>{data.score || '—'}<Typography component="span" variant="h5" color="text.secondary">/100</Typography></Typography>
+            <Typography color="text.secondary">投流适配评分</Typography>
+            {data.conclusion && <Chip label={data.conclusion} size="small" color={data.score >= 70 ? 'success' : 'warning'} sx={{ mt: 1 }} />}
+          </CardContent></Card>
+        </Grid>
+
+        <Grid size={8}>
+          <Card><CardContent>
+            <Typography variant="h6" gutterBottom>评分维度</Typography>
+            {(data.dimensions || []).map((d: any, i: number) => (
+              <Box key={i} mb={1.5}>
+                <Box display="flex" justifyContent="space-between" mb={0.3}>
+                  <Typography variant="body2">{d.label}</Typography>
+                  <Typography variant="body2" color="text.secondary">{d.score}/{d.weight}</Typography>
                 </Box>
-              ))}
-            </CardContent>
-          </Card>
+                <LinearProgress variant="determinate" value={(d.score / d.weight) * 100} sx={{ height: 6, borderRadius: 3, bgcolor: 'action.hover', '& .MuiLinearProgress-bar': { borderRadius: 3 } }} />
+                {d.comment && <Typography variant="caption" color="text.secondary">{d.comment}</Typography>}
+              </Box>
+            ))}
+          </CardContent></Card>
         </Grid>
 
-        {/* Recommendations */}
-        <Grid size={{ xs: 12, md: 5 }}>
-          <Card sx={{ mb: 2 }}>
-            <CardContent>
-              <Typography variant="h6" gutterBottom>建议投放人群</Typography>
-              <Typography variant="body2">对价格有犹豫但对品质有需求的人群</Typography>
-            </CardContent>
-          </Card>
+        <Grid size={6}><Card><CardContent>
+          <Typography variant="h6" gutterBottom>测试变量建议</Typography>
+          {(data.testVariables || []).map((v: any, i: number) => <Box key={i} display="flex" gap={1} alignItems="center" mb={1}><Chip label={v.variant} size="small" color="primary" variant="outlined" /><Box><Typography variant="body2" fontWeight={600}>{v.name}</Typography><Typography variant="caption" color="text.secondary">{v.description}</Typography></Box></Box>)}
+        </CardContent></Card></Grid>
 
-          <Card sx={{ mb: 2 }}>
-            <CardContent>
-              <Typography variant="h6" gutterBottom>建议测试变量</Typography>
-              <List dense>
-                <ListItem>
-                  <ListItemIcon><CheckCircle color="success" fontSize="small" /></ListItemIcon>
-                  <ListItemText primary="A：价格质疑型开头" />
-                </ListItem>
-                <ListItem>
-                  <ListItemIcon><CheckCircle color="success" fontSize="small" /></ListItemIcon>
-                  <ListItemText primary="B：效果证明型开头" />
-                </ListItem>
-                <ListItem>
-                  <ListItemIcon><CheckCircle color="success" fontSize="small" /></ListItemIcon>
-                  <ListItemText primary="C：真实评论型开头" />
-                </ListItem>
-              </List>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardContent>
-              <Typography variant="h6" gutterBottom color="warning.main">
-                <Warning fontSize="small" sx={{ mr: 0.5 }} />
-                风险提醒
-              </Typography>
-              <Alert severity="warning" sx={{ mt: 1 }}>
-                评论区存在价格异议，投流前需要补充价值解释内容
-              </Alert>
-              <Typography variant="body2" mt={2}>
-                <strong>放量建议：</strong>若小预算测试 CTR、CVR、负面评论率达标，可进入第二轮素材变体测试
-              </Typography>
-            </CardContent>
-          </Card>
-        </Grid>
+        <Grid size={6}><Card><CardContent>
+          <Typography variant="h6" gutterBottom>投流建议</Typography>
+          {data.targetAudience && <><Typography variant="subtitle2">推荐人群</Typography><Typography variant="body2" mb={1}>{data.targetAudience}</Typography></>}
+          {data.scaleAdvice && <><Typography variant="subtitle2">放量建议</Typography><Typography variant="body2" mb={1}>{data.scaleAdvice}</Typography></>}
+          {data.riskWarning && <Alert severity="warning" sx={{ mt: 1 }} icon={<Warning />}>{data.riskWarning}</Alert>}
+        </CardContent></Card></Grid>
       </Grid>
     </Box>
   );

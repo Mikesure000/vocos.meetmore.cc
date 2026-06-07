@@ -19,11 +19,14 @@ export async function analysisRoutes(app: FastifyInstance) {
   app.get('/tasks/:taskId/comment-cleaning', { preHandler: [authMiddleware] }, async (req) => {
     const { taskId } = req.params as any;
 
-    const [total, valid, spam, duplicate] = await Promise.all([
+    const [total, valid, spam, duplicate, fuzzyDup,引流Count, replyChainCount] = await Promise.all([
       prisma.comment.count({ where: { taskId } }),
       prisma.comment.count({ where: { taskId, cleanStatus: 'valid' } }),
       prisma.comment.count({ where: { taskId, cleanStatus: 'spam' } }),
       prisma.comment.count({ where: { taskId, cleanStatus: { in: ['duplicate_exact', 'duplicate_fuzzy'] } } }),
+      prisma.comment.count({ where: { taskId, cleanStatus: 'duplicate_fuzzy' } }),
+      prisma.comment.count({ where: { taskId, signalLabels: { contains: 'dm_consult_signal' } } }),
+      prisma.commentThread.count({ where: { taskId } }),
     ]);
 
     const highValue = await prisma.comment.count({ where: { taskId, valueScore: { gte: 4 } } });
@@ -32,14 +35,14 @@ export async function analysisRoutes(app: FastifyInstance) {
 
     return {
       originalCount: total,
-      normalizedSuccess: total - 25,
+      normalizedSuccess: total - (spam + duplicate),
       exactDuplicates: duplicate,
-      fuzzyDuplicates: 7,
+      fuzzyDuplicates: fuzzyDup,
       crossPostDuplicates: 0,
       spamCount: spam,
-     引流Count: 8,
+      引流Count,
       validCount: valid,
-      replyChainCount: 87,
+      replyChainCount,
       highValueCount: highValue,
       highPurchaseIntentCount: highPurchase,
       highRiskNegativeCount: highRisk,
@@ -51,38 +54,40 @@ export async function analysisRoutes(app: FastifyInstance) {
   app.get('/tasks/:taskId/reply-chains', { preHandler: [authMiddleware] }, async (req) => {
     const { taskId } = req.params as any;
 
+    const threads = await prisma.commentThread.findMany({
+      where: { taskId },
+      orderBy: { replyCount: 'desc' },
+      take: 10,
+      include: { task: { select: { comments: { select: { content: true }, where: {}, take: 1 } } } },
+    });
+
+    if (threads.length === 0) {
+      return { totalThreads: 0, maxDepth: 0, controversyChains: [], threadDistribution: {}, _source: 'db' };
+    }
+
+    // 用 rootCommentId 去 comment 表找对应的文本
+    const commentIds = threads.map(t => t.rootCommentId);
+    const comments = await prisma.comment.findMany({ where: { id: { in: commentIds } }, select: { id: true, content: true } });
+    const commentMap = new Map(comments.map(c => [c.id, c.content]));
+
+    const controversyChains = threads
+      .filter(t => t.riskLevel === 'high' || t.riskLevel === 'medium')
+      .slice(0, 5)
+      .map(t => ({
+        rootComment: commentMap.get(t.rootCommentId) || '(已删除)',
+        participants: t.participantsCount,
+        replies: t.replyCount,
+        topic: t.topic || '未分类',
+        riskLevel: t.riskLevel,
+        summary: t.threadSummary || '',
+      }));
+
     return {
-      totalThreads: 87,
-      maxDepth: 5,
-      controversyChains: [
-        {
-          rootComment: '这个和几十块的有什么区别？',
-          participants: 12,
-          replies: 15,
-          topic: '价格争议',
-          riskLevel: 'medium',
-          summary: '多位用户讨论产品价值问题，部分用户表达了强烈质疑',
-        },
-        {
-          rootComment: '用了两周过敏了',
-          participants: 8,
-          replies: 10,
-          topic: '安全性争议',
-          riskLevel: 'high',
-          summary: '负面体验讨论，需要及时回应和解释',
-        },
-        {
-          rootComment: '到底有没有用？看评论都说没效果',
-          participants: 6,
-          replies: 8,
-          topic: '效果争议',
-          riskLevel: 'medium',
-          summary: '用户对产品效果存在分歧，需要更多真实案例支撑',
-        },
-      ],
-      threadDistribution: {
-        depth1: 45, depth2: 25, depth3: 10, depth4: 5, depth5: 2,
-      },
+      totalThreads: threads.length,
+      maxDepth: Math.max(...threads.map(t => t.replyCount), 0),
+      controversyChains,
+      threadDistribution: { depth1: threads.filter(t => t.replyCount <= 5).length, depth2: threads.filter(t => t.replyCount > 5 && t.replyCount <= 10).length, depth3: threads.filter(t => t.replyCount > 10).length },
+      _source: 'db',
     };
   });
 
@@ -105,5 +110,65 @@ export async function analysisRoutes(app: FastifyInstance) {
     const { taskId } = req.params as any;
     const { data, source } = await analysisService.getAttribution(taskId);
     return { attributions: data.attributions, _source: source };
+  });
+
+  // ============ 投流适配评分 ============
+  app.get('/tasks/:taskId/ad-fit', { preHandler: [authMiddleware] }, async (req) => {
+    const { taskId } = req.params as any;
+    const existing = await prisma.adFitScore.findFirst({ where: { taskId }, orderBy: { createdAt: 'desc' } });
+    if (existing) return { ...JSON.parse(existing.resultJson), score: existing.score, _source: 'db' };
+
+    // Fallback mock
+    return {
+      score: 78,
+      dimensions: [
+        { label: '人群清晰度', weight: 15, score: 12, comment: '目标人群定位较好，但可进一步细分' },
+        { label: '卖点清晰度', weight: 15, score: 11, comment: '核心卖点清楚，价值差异化可加强' },
+        { label: '购买理由', weight: 15, score: 12, comment: '解决了用户痛点但说服力可增强' },
+        { label: '评论风险', weight: 10, score: 6, comment: '评论区存在价格异议' },
+        { label: '合规风险', weight: 15, score: 14, comment: '无明显合规风险' },
+        { label: '素材稳定性', weight: 10, score: 8, comment: '部分依赖热点，长线稳定性中等' },
+        { label: '可剪辑复用性', weight: 10, score: 8, comment: '可剪辑多版本但需要额外素材' },
+        { label: '转化承接', weight: 10, score: 7, comment: 'CTA 可更明确' },
+      ],
+      conclusion: '适合小预算测试，不建议直接大预算放量',
+      testVariables: [
+        { variant: 'A', name: '价格质疑型开头', description: '直接回应评论区价格问题' },
+        { variant: 'B', name: '效果证明型开头', description: '用数据/案例证明效果' },
+        { variant: 'C', name: '真实评论型开头', description: '用评论截图引导用户共鸣' },
+      ],
+      riskWarning: '评论区存在价格异议，投流前需要补充价值解释内容',
+      scaleAdvice: '建议先用3000元小额测试，CTR>3%可逐步放量',
+      targetAudience: '对价格有犹豫但对品质有需求的人群',
+      _source: 'mock',
+    };
+  });
+
+  // ============ 评论区运营方案 ============
+  app.get('/tasks/:taskId/comment-ops', { preHandler: [authMiddleware] }, async (req) => {
+    const { taskId } = req.params as any;
+    const existing = await prisma.commentOperationPlan.findFirst({ where: { taskId }, orderBy: { createdAt: 'desc' } });
+    if (existing) return { ...JSON.parse(existing.planJson), _source: 'db' };
+
+    // Fallback mock
+    return {
+      pinned: ['很多人问它和几十块平替的区别，下一条我们从成分、体验和适合人群三个角度拆清楚', '评论区收集的常见问题都在这里，建议收藏再看'],
+      standardReplies: [
+        { type: '价格异议', template: '确实不算低价，所以更适合XX需求的人。下条内容我们会把贵在哪里讲清楚' },
+        { type: '效果疑问', template: '每个人的使用效果会有差异，建议按照我们的教程坚持使用，也欢迎分享你的使用感受' },
+        { type: '安全性', template: '产品经过了XX项安全检测，具体成分表可以去看商品详情页' },
+        { type: '肤质适配', template: '不同肤质使用方法不同，我们正在做分肤质教程，可以关注下一条内容' },
+      ],
+      negativeReplies: [
+        { scenario: '过敏反馈', reply: '很抱歉给你带来不好的体验。每个人的体质不同，建议先暂停使用并咨询客服了解具体情况' },
+        { scenario: '效果质疑', reply: '感谢你的真实反馈。产品效果因人而异，我们会持续优化配方。如果有具体问题可以私信我们' },
+        { scenario: '价格吐槽', reply: '感谢反馈。下条内容我们会详细拆解产品价值，让你了解每一分钱的去处' },
+      ],
+      dmScripts: ['你好呀！关于产品的使用问题，可以具体说说是哪种肤质吗？我来给你定制方案~', '感谢私信！关于你问的XX问题，我们马上安排详细解答', '看到你关注我们很久了，需要我帮你推荐适合的产品吗？'],
+      interactionQuestions: ['你是因为什么犹豫没下单？评论区告诉我', '下一个想看什么对比？评论区提名', '你有类似的使用感受吗？来评论区聊聊'],
+      nextContentHooks: ['下一条：评论区最关心的价格问题，我们一次讲清楚', '想看真实28天使用记录？关注别错过下一条'],
+      highRisk: [{ signal: '严重负面评论', action: '48小时内官方账号回复 + 私信跟进 + 记录反馈给产品团队' }, { signal: '竞品攻击', action: '不过度反应，保持专业；举报违规内容；加强本品正面内容输出' }],
+      _source: 'mock',
+    };
   });
 }
