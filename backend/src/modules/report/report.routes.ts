@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { prisma } from '../../config/prisma.js';
 import { authMiddleware } from '../../middleware/auth.js';
 import { reportExporter } from './exporters/report-exporter.js';
+import { analysisService } from '../insight/analysis.service.js';
 import { auditService } from '../admin/audit.service.js';
 import * as fs from 'node:fs';
 
@@ -12,22 +13,37 @@ export async function reportRoutes(app: FastifyInstance) {
     return prisma.report.findMany({ where: { taskId }, orderBy: { createdAt: 'desc' } });
   });
 
-  // Generate report
+  // Generate report (v3.7: reads real analysis data from DB)
   app.post('/tasks/:taskId/reports/generate', { preHandler: [authMiddleware] }, async (req, reply) => {
     const { taskId } = req.params as any;
     const { reportType = 'full', reportTitle = '分析报告' } = req.body as any;
 
-    // Collect task data
-    const task = await prisma.analysisTask.findUnique({ where: { id: taskId } });
+    const task = await prisma.analysisTask.findUnique({
+      where: { id: taskId },
+      include: { project: { select: { projectName: true, brandName: true, category: { select: { name: true, icon: true } } } } },
+    });
     if (!task) return reply.status(404).send({ message: 'Task not found' });
 
-    const [strategyCards, comments, signalStats] = await Promise.all([
+    // 并行读取所有分析数据
+    const [
+      strategyCards, comments, productionCards,
+      contentAnalysis, attribution, demandMap, barrierMap,
+      validCount, spamCount, duplicateCount, highValueCount, threadCount,
+    ] = await Promise.all([
       prisma.strategyCard.findMany({ where: { taskId } }),
       prisma.comment.count({ where: { taskId } }),
-      prisma.comment.findMany({ where: { taskId, cleanStatus: 'valid' }, select: { signalLabels: true } }),
+      prisma.productionCard.findMany({ where: { taskId } }),
+      analysisService.getContentAnalysis(taskId).catch(() => ({ data: null, source: 'mock' as const })),
+      analysisService.getAttribution(taskId).catch(() => ({ data: null, source: 'mock' as const })),
+      analysisService.getDemandMap(taskId).catch(() => ({ data: null, source: 'mock' as const })),
+      analysisService.getBarrierMap(taskId).catch(() => ({ data: null, source: 'mock' as const })),
+      prisma.comment.count({ where: { taskId, cleanStatus: 'valid' } }),
+      prisma.comment.count({ where: { taskId, cleanStatus: 'spam' } }),
+      prisma.comment.count({ where: { taskId, cleanStatus: { in: ['duplicate_exact', 'duplicate_fuzzy'] } } }),
+      prisma.comment.count({ where: { taskId, valueScore: { gte: 4 } } }),
+      prisma.commentThread.count({ where: { taskId } }),
     ]);
 
-    // Build report JSON
     const reportJson = {
       generated: true,
       timestamp: new Date().toISOString(),
@@ -35,29 +51,33 @@ export async function reportRoutes(app: FastifyInstance) {
         taskName: task.taskName,
         platform: task.platform,
         contentGoal: task.contentGoal,
+        projectName: task.project?.projectName,
+        brandName: task.project?.brandName,
+        category: task.project?.category?.name,
         commentCount: comments,
       },
-      contentAnalysis: {
-        titleStructure: { hasPainPoint: true, hasKeyword: true, hasBenefit: false },
-        contentTheme: '产品测评对比',
-        platformFit: { douyin: 'good', xiaohongshu: 'excellent' },
-      },
+      contentAnalysis: contentAnalysis?.data || {},
       commentCleaning: {
         originalCount: comments,
-        validCount: comments,
-        exactDuplicates: 0,
-        spamCount: 0,
+        validCount,
+        spamCount,
+        exactDuplicates: duplicateCount,
+        highValueCount,
+        replyChainCount: threadCount,
       },
       insights: {
-        demands: [{ category: '效果验证', frequency: 'high', evidence: '多人追问真实效果' }],
-        barriers: [{ type: 'price', level: 'high', action: '制作价值拆解内容' }],
+        demands: demandMap?.data?.demands || [],
+        barriers: barrierMap?.data?.barriers || [],
+        attribution: attribution?.data?.attributions || [],
       },
       strategyCards: strategyCards.map((c) => ({
         priority: c.priority,
         title: c.title,
-        commentEvidence: [],
-        coreJudgment: '',
-        nextAction: '',
+        platform: c.platform,
+        ...JSON.parse(c.cardJson || '{}'),
+      })),
+      productionCards: productionCards.map((c) => ({
+        platform: c.platform,
         ...JSON.parse(c.cardJson || '{}'),
       })),
     };
