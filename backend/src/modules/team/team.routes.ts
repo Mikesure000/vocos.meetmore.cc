@@ -41,4 +41,24 @@ export async function teamRoutes(app: FastifyInstance) {
     if (!user) return { error: '用户不存在' };
     return prisma.teamMember.create({ data: { teamId: id, userId: user.id, role: role || 'member' } });
   });
+
+  // ============ 白标配置 ============
+  app.get('/teams/:id/white-label', { preHandler: [authMiddleware] }, async (req) => {
+    const { id } = req.params as any;
+    const team = await prisma.team.findUnique({ where: { id }, select: { whiteLabelConfig: true } });
+    return team?.whiteLabelConfig ? JSON.parse(team.whiteLabelConfig) : {};
+  });
+
+  app.put('/teams/:id/white-label', { preHandler: [authMiddleware] }, async (req) => {
+    const { id } = req.params as any;
+    const body = req.body as any;
+    const config = {
+      companyName: body.companyName || 'VocosAI',
+      logo: body.logo || '',
+      primaryColor: body.primaryColor || '#16a34a',
+      hideVocosBrand: body.hideVocosBrand || false,
+    };
+    await prisma.team.update({ where: { id }, data: { whiteLabelConfig: JSON.stringify(config) } });
+    return { message: '白标配置已更新', config };
+  });
 }

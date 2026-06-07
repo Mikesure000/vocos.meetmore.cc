@@ -201,10 +201,15 @@ export class ReportExporter {
   // === JSON → Markdown ===
   private jsonToMarkdown(reportJson: string, title: string): string {
     const data = JSON.parse(reportJson);
+    const wl = data.whiteLabel || {};
+    const brand = wl.companyName || 'VocosAI';
+    const hideBrand = wl.hideVocosBrand || false;
+
     let md = `# ${title}\n\n`;
+    if (wl.companyName) md += `**${wl.companyName}**  \n`;
     md += `> 生成时间：${new Date().toLocaleString('zh-CN')}\n`;
-    md += `> 生成工具：VocosAI — Voice of Consumer OS\n\n`;
-    md += `---\n\n`;
+    if (!hideBrand) md += `> 生成工具：VocosAI — Voice of Consumer OS\n`;
+    md += `\n---\n\n`;
 
     // Content analysis
     if (data.contentAnalysis) {
@@ -294,7 +299,9 @@ export class ReportExporter {
     }
 
     md += `---\n\n`;
-    md += `*本报告由 VocosAI 自动生成，基于评论区真实用户数据分析*\n`;
+    if (!hideBrand || !wl.companyName) {
+      md += `*本报告由 VocosAI 自动生成，基于评论区真实用户数据分析*\n`;
+    }
 
     return md;
   }

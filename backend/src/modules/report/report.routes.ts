@@ -20,7 +20,7 @@ export async function reportRoutes(app: FastifyInstance) {
 
     const task = await prisma.analysisTask.findUnique({
       where: { id: taskId },
-      include: { project: { select: { projectName: true, brandName: true, category: { select: { name: true, icon: true } } } } },
+      include: { project: { select: { projectName: true, brandName: true, category: { select: { name: true, icon: true } } } }, team: { select: { whiteLabelConfig: true } } },
     });
     if (!task) return reply.status(404).send({ message: 'Task not found' });
 
@@ -80,6 +80,7 @@ export async function reportRoutes(app: FastifyInstance) {
         platform: c.platform,
         ...JSON.parse(c.cardJson || '{}'),
       })),
+      whiteLabel: task.team?.whiteLabelConfig ? JSON.parse(task.team.whiteLabelConfig) : {},
     };
 
     const markdown = reportExporter['jsonToMarkdown'](JSON.stringify(reportJson), reportTitle);

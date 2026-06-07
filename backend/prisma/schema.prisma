@@ -42,17 +42,18 @@ model User {
 // ============================================================
 
 model Team {
-  id          String   @id @default(uuid())
-  teamName    String   @map("team_name")
-  ownerUserId String   @map("owner_user_id")
-  planType    String   @default("free") @map("plan_type") // free, pro, enterprise
-  monthlyQuota Int     @default(1000000) @map("monthly_quota") // token
-  usedQuota   Int     @default(0) @map("used_quota")
-  status      String   @default("active")
-  createdAt   DateTime @default(now()) @map("created_at")
-  updatedAt   DateTime @updatedAt @map("updated_at")
+  id               String   @id @default(uuid())
+  teamName         String   @map("team_name")
+  ownerUserId      String   @map("owner_user_id")
+  planType         String   @default("free") @map("plan_type") // free, pro, enterprise
+  monthlyQuota     Int      @default(1000000) @map("monthly_quota") // token
+  usedQuota        Int      @default(0) @map("used_quota")
+  whiteLabelConfig String?  @map("white_label_config") // JSON: { companyName, logo, primaryColor, hideVocosBrand }
+  status           String   @default("active")
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
 
-  owner       User      @relation("TeamOwner", fields: [ownerUserId], references: [id])
+  owner       User         @relation("TeamOwner", fields: [ownerUserId], references: [id])
   members     TeamMember[]
   projects    Project[]
   tasks       AnalysisTask[]

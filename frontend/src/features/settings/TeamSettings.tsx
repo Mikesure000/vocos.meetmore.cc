@@ -1,126 +1,150 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Box, Typography, Card, CardContent, Button, Grid, Chip, TextField,
-  Dialog, DialogTitle, DialogContent, DialogActions, Avatar, IconButton,
-  Table, TableBody, TableCell, TableRow, FormControl, Select, MenuItem,
+  Divider, Switch, FormControlLabel, Alert, CircularProgress,
 } from '@mui/material';
-import { ArrowBack, Add, PersonAdd, Delete, AdminPanelSettings, Edit } from '@mui/icons-material';
+import { ArrowBack, Business, Palette, VisibilityOff, Save, AutoAwesome } from '@mui/icons-material';
 import { useSnackbar } from 'notistack';
+import { apiClient } from '../../shared/api/client';
 
-const mockMembers = [
-  { id: '1', name: '系统管理员', email: 'admin@vocosai.com', role: 'team_admin', avatar: '管' },
-  { id: '2', name: '演示用户', email: 'demo@vocosai.com', role: 'member', avatar: '演' },
-];
-
-const roleLabels: Record<string, string> = {
-  team_admin: '团队管理员', project_lead: '项目负责人', content_lead: '内容负责人',
-  content_member: '内容成员', ad_member: '投放成员', client_viewer: '客户访客',
-  member: '普通成员',
-};
+const DEFAULT_COLORS = ['#16a34a', '#2563eb', '#dc2626', '#9333ea', '#f59e0b', '#0891b2'];
 
 export default function TeamSettings() {
   const navigate = useNavigate();
   const { enqueueSnackbar } = useSnackbar();
-  const [members, setMembers] = useState(mockMembers);
-  const [inviteOpen, setInviteOpen] = useState(false);
-  const [inviteEmail, setInviteEmail] = useState('');
-  const [inviteRole, setInviteRole] = useState('member');
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [teamId, setTeamId] = useState('default');
 
-  const handleInvite = () => {
-    if (!inviteEmail) return;
-    setMembers([...members, { id: String(Date.now()), name: inviteEmail.split('@')[0], email: inviteEmail, role: inviteRole, avatar: inviteEmail[0].toUpperCase() }]);
-    setInviteOpen(false);
-    setInviteEmail('');
-    enqueueSnackbar('邀请已发送', { variant: 'success' });
+  const [whiteLabel, setWhiteLabel] = useState({
+    companyName: '',
+    logo: '',
+    primaryColor: '#16a34a',
+    hideVocosBrand: false,
+  });
+
+  useEffect(() => {
+    Promise.all([
+      apiClient.get('/api/teams').then(r => { if (r.data[0]) setTeamId(r.data[0].id); }),
+      apiClient.get(`/api/teams/default/white-label`).then(r => { if (r.data.companyName) setWhiteLabel(r.data); }).catch(()=>{}),
+    ]).finally(() => setLoading(false));
+  }, []);
+
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      await apiClient.put(`/api/teams/${teamId}/white-label`, whiteLabel);
+      enqueueSnackbar('白标配置已保存', { variant: 'success' });
+    } catch { enqueueSnackbar('保存失败', { variant: 'error' }); }
+    finally { setSaving(false); }
   };
 
-  const handleRemove = (id: string) => {
-    setMembers(members.filter(m => m.id !== id));
-    enqueueSnackbar('成员已移除', { variant: 'info' });
-  };
-
-  const handleRoleChange = (id: string, role: string) => {
-    setMembers(members.map(m => m.id === id ? { ...m, role } : m));
-    enqueueSnackbar('角色已更新', { variant: 'success' });
-  };
+  if (loading) return <Box display="flex" justifyContent="center" py={8}><CircularProgress /></Box>;
 
   return (
-    <Box maxWidth={800}>
+    <Box>
       <Box display="flex" alignItems="center" gap={1} mb={3}>
         <Button startIcon={<ArrowBack />} onClick={() => navigate('/settings')}>返回</Button>
         <Typography variant="h4" fontWeight={700}>团队设置</Typography>
       </Box>
 
       <Grid container spacing={3}>
-        <Grid size={12}>
+        {/* White Label */}
+        <Grid size={{ xs: 12, md: 7 }}>
           <Card>
             <CardContent>
-              <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
-                <Box>
-                  <Typography variant="h6">团队成员</Typography>
-                  <Typography variant="body2" color="text.secondary">{members.length} 位成员</Typography>
-                </Box>
-                <Button variant="contained" startIcon={<PersonAdd />} onClick={() => setInviteOpen(true)}>邀请成员</Button>
+              <Box display="flex" alignItems="center" gap={1} mb={2}>
+                <Business color="primary" />
+                <Typography variant="h6">白标配置</Typography>
+                <Chip label="代运营专享" size="small" color="primary" variant="outlined" />
               </Box>
+              <Typography variant="body2" color="text.secondary" mb={3}>
+                配置后，导出的报告将使用您的品牌标识，隐藏 VocosAI 品牌。
+              </Typography>
 
-              <Table size="small">
-                <TableBody>
-                  {members.map(m => (
-                    <TableRow key={m.id}>
-                      <TableCell sx={{ width: 40 }}><Avatar sx={{ width: 32, height: 32, fontSize: 14, bgcolor: 'primary.main' }}>{m.avatar}</Avatar></TableCell>
-                      <TableCell>
-                        <Typography variant="body2" fontWeight={600}>{m.name}</Typography>
-                        <Typography variant="caption" color="text.secondary">{m.email}</Typography>
-                      </TableCell>
-                      <TableCell>
-                        <FormControl size="small" sx={{ minWidth: 140 }}>
-                          <Select value={m.role} onChange={(e) => handleRoleChange(m.id, e.target.value)}>
-                            {Object.entries(roleLabels).map(([k, v]) => <MenuItem key={k} value={k}>{v}</MenuItem>)}
-                          </Select>
-                        </FormControl>
-                      </TableCell>
-                      <TableCell>
-                        <IconButton size="small" color="error" onClick={() => handleRemove(m.id)}><Delete fontSize="small" /></IconButton>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
+              <Grid container spacing={2}>
+                <Grid size={6}>
+                  <TextField fullWidth label="公司名称" value={whiteLabel.companyName}
+                    onChange={e => setWhiteLabel({ ...whiteLabel, companyName: e.target.value })}
+                    placeholder="默认为 VocosAI"
+                    helperText="在报告封面和页脚展示" />
+                </Grid>
+                <Grid size={6}>
+                  <TextField fullWidth label="Logo URL" value={whiteLabel.logo}
+                    onChange={e => setWhiteLabel({ ...whiteLabel, logo: e.target.value })}
+                    placeholder="https://your-company.com/logo.png"
+                    helperText="报告封面展示的 Logo" />
+                </Grid>
+                <Grid size={12}>
+                  <Typography variant="subtitle2" gutterBottom>品牌主色</Typography>
+                  <Box display="flex" gap={1} flexWrap="wrap" mb={1}>
+                    {DEFAULT_COLORS.map(c => (
+                      <Box key={c} onClick={() => setWhiteLabel({ ...whiteLabel, primaryColor: c })}
+                        sx={{ width: 36, height: 36, borderRadius: 2, bgcolor: c, cursor: 'pointer',
+                          border: whiteLabel.primaryColor === c ? '3px solid white' : '3px solid transparent',
+                          outline: whiteLabel.primaryColor === c ? `2px solid ${c}` : 'none',
+                          transition: 'all 0.15s',
+                        }} />
+                    ))}
+                  </Box>
+                  <TextField size="small" value={whiteLabel.primaryColor} sx={{ width: 120 }}
+                    onChange={e => setWhiteLabel({ ...whiteLabel, primaryColor: e.target.value })} />
+                </Grid>
+                <Grid size={12}>
+                  <FormControlLabel
+                    control={<Switch checked={whiteLabel.hideVocosBrand}
+                      onChange={e => setWhiteLabel({ ...whiteLabel, hideVocosBrand: e.target.checked })} />}
+                    label="隐藏 VocosAI 品牌标识"
+                  />
+                  <Typography variant="caption" color="text.secondary" display="block">
+                    开启后报告中将不显示"由 VocosAI 生成"字样
+                  </Typography>
+                </Grid>
+              </Grid>
+
+              <Box mt={3}>
+                <Button variant="contained" startIcon={<Save />} onClick={handleSave} disabled={saving}>
+                  {saving ? '保存中...' : '保存白标配置'}
+                </Button>
+              </Box>
             </CardContent>
           </Card>
         </Grid>
 
-        <Grid size={12}>
+        {/* Preview */}
+        <Grid size={{ xs: 12, md: 5 }}>
           <Card>
             <CardContent>
-              <Typography variant="h6" gutterBottom>团队信息</Typography>
-              <Grid container spacing={2}>
-                <Grid size={6}><TextField fullWidth label="团队名称" defaultValue="默认团队" size="small" /></Grid>
-                <Grid size={6}><TextField fullWidth label="行业" defaultValue="美妆护肤" size="small" /></Grid>
-                <Grid size={12}><TextField fullWidth label="描述" defaultValue="内容策略分析团队" size="small" multiline rows={2} /></Grid>
-              </Grid>
-              <Button variant="contained" sx={{ mt: 2 }}>保存</Button>
+              <Typography variant="h6" gutterBottom>报告预览</Typography>
+              <Box sx={{ p: 3, borderRadius: 2, border: '1px solid', borderColor: 'divider', textAlign: 'center' }}>
+                {/* Logo */}
+                {whiteLabel.logo ? (
+                  <Box component="img" src={whiteLabel.logo} alt="logo" sx={{ maxHeight: 40, mb: 1 }} />
+                ) : (
+                  <Typography variant="h6" color="text.disabled" mb={1}>[ Logo ]</Typography>
+                )}
+                {/* Title */}
+                <Typography variant="h5" fontWeight={700} color={whiteLabel.primaryColor} mb={0.5}>
+                  分析报告
+                </Typography>
+                <Typography variant="body2" color="text.secondary" mb={2}>
+                  {whiteLabel.companyName || 'VocosAI'}
+                </Typography>
+                <Divider sx={{ mb: 2 }} />
+                <Typography variant="body2" color="text.secondary">内容拆解 · 评论洞察 · 策略卡 · 生产卡</Typography>
+                <Typography variant="caption" color="text.disabled" display="block" mt={1}>
+                  {whiteLabel.hideVocosBrand ? '— 纯白标报告 —' : '由 VocosAI 生成'}
+                </Typography>
+              </Box>
             </CardContent>
           </Card>
+
+          <Alert severity="info" sx={{ mt: 2 }}>
+            导出报告（Markdown/PDF/Word/Excel/HTML/PPT）将自动应用白标配置。
+          </Alert>
         </Grid>
       </Grid>
-
-      <Dialog open={inviteOpen} onClose={() => setInviteOpen(false)} maxWidth="sm" fullWidth>
-        <DialogTitle>邀请成员</DialogTitle>
-        <DialogContent>
-          <TextField fullWidth label="邮箱地址" value={inviteEmail} onChange={(e) => setInviteEmail(e.target.value)} margin="normal" placeholder="member@example.com" />
-          <FormControl fullWidth margin="normal">
-            <Select value={inviteRole} onChange={(e) => setInviteRole(e.target.value)}>
-              {Object.entries(roleLabels).map(([k, v]) => <MenuItem key={k} value={k}>{v}</MenuItem>)}
-            </Select>
-          </FormControl>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setInviteOpen(false)}>取消</Button>
-          <Button variant="contained" onClick={handleInvite} disabled={!inviteEmail}>发送邀请</Button>
-        </DialogActions>
-      </Dialog>
     </Box>
   );
 }
