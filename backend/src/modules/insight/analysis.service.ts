@@ -310,6 +310,25 @@ export const analysisService = {
       }
     }
 
+    // agent-11 → ProductionCard (内容生产卡)
+    if (agentResults['agent-11']) {
+      const cards = Array.isArray(agentResults['agent-11'])
+        ? agentResults['agent-11']
+        : agentResults['agent-11'].cards || [agentResults['agent-11']];
+      for (const card of cards) {
+        ops.push(
+          prisma.productionCard.create({
+            data: {
+              taskId,
+              platform: card.platform || 'douyin',
+              cardJson: JSON.stringify(card),
+              status: 'pending',
+            },
+          })
+        );
+      }
+    }
+
     await Promise.all(ops);
     console.log(`[analysisService] Saved ${ops.length} analysis results for task ${taskId}`);
   },
