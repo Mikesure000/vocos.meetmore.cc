@@ -180,7 +180,10 @@ export async function taskRoutes(app: FastifyInstance) {
   app.post('/tasks/:taskId/start', { preHandler: [authMiddleware] }, async (req, reply) => {
     const { taskId } = req.params as any;
     const user = req.user as any;
-    const task = await prisma.analysisTask.findUnique({ where: { id: taskId } });
+    const task = await prisma.analysisTask.findUnique({
+      where: { id: taskId },
+      include: { project: { select: { categoryId: true, brandName: true } } },
+    });
     if (!task) return reply.status(404).send({ message: 'Task not found' });
 
     await prisma.analysisTask.update({
@@ -189,6 +192,24 @@ export async function taskRoutes(app: FastifyInstance) {
     });
 
     const commentCount = await prisma.comment.count({ where: { taskId } });
+
+    // 加载品类知识库
+    let categoryInfo: string | undefined;
+    if (task.project?.categoryId) {
+      const cat = await prisma.category.findUnique({ where: { id: task.project.categoryId } });
+      if (cat) {
+        categoryInfo = JSON.stringify({ name: cat.name, keyConcerns: JSON.parse(cat.knowledgeBase || '{}').keyConcerns || [], dimensions: JSON.parse(cat.knowledgeBase || '{}').dimensions || [], complianceRules: JSON.parse(cat.complianceRules || '[]'), platformMethodology: JSON.parse(cat.platformMethodology || '{}') });
+      }
+    }
+
+    // 加载品牌知识库
+    let brandKnowledge: string | undefined;
+    if (task.project?.brandName) {
+      const brand = await prisma.brand.findFirst({ where: { name: task.project.brandName } });
+      if (brand) {
+        brandKnowledge = JSON.stringify({ brandName: brand.name, positioning: brand.positioning, sellingPoints: brand.sellingPoints, taboos: brand.taboos || [] });
+      }
+    }
 
     orchestrator.runPipeline({
       taskId: task.id,
@@ -202,6 +223,8 @@ export async function taskRoutes(app: FastifyInstance) {
       brandInfo: task.brandInfo || '',
       outputOptions: task.outputOptions ? JSON.parse(task.outputOptions) : [],
       commentCount,
+      categoryInfo,
+      brandKnowledge,
     }).catch(console.error);
 
     return { message: '分析任务已启动', status: 'analyzing', commentCount };

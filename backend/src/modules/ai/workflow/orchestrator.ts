@@ -50,6 +50,8 @@ interface TaskContext {
   brandInfo: string;
   outputOptions: string[];
   commentCount: number;
+  categoryInfo?: string;   // 品类知识库 JSON
+  brandKnowledge?: string;  // 品牌知识库 JSON
 }
 
 export class TaskOrchestrator {
@@ -192,7 +194,7 @@ export class TaskOrchestrator {
   }
 
   private getUserPrompt(agentCode: string, context: TaskContext): string {
-    const baseInfo = {
+    const baseInfo: any = {
       taskId: context.taskId,
       platform: context.platform,
       contentTitle: context.contentTitle,
@@ -201,6 +203,28 @@ export class TaskOrchestrator {
       brandInfo: context.brandInfo,
       commentCount: context.commentCount,
     };
+
+    // 注入品类知识（尤其是合规相关 agent）
+    if (context.categoryInfo) {
+      const cat = JSON.parse(context.categoryInfo);
+      if (['agent-00', 'agent-01', 'agent-07', 'agent-08', 'agent-10', 'agent-11', 'agent-14'].includes(agentCode)) {
+        baseInfo.categoryContext = {
+          name: cat.name,
+          keyConcerns: cat.keyConcerns,
+          dimensions: cat.dimensions,
+          complianceRules: cat.complianceRules || [],
+          platformMethodology: cat.platformMethodology?.[context.platform] || null,
+        };
+      }
+    }
+
+    // 注入品牌知识
+    if (context.brandKnowledge) {
+      try {
+        const brand = JSON.parse(context.brandKnowledge);
+        baseInfo.brandContext = { brandName: brand.brandName, positioning: brand.positioning, sellingPoints: brand.sellingPoints, taboos: brand.taboos || [] };
+      } catch {}
+    }
 
     return `请分析以下任务数据并输出JSON格式结果：\n${JSON.stringify(baseInfo, null, 2)}`;
   }
