@@ -1,5 +1,15 @@
 # VocosAI 版本记录
 
+## v3.9.0 — 白标系统 (2026-06-07)
+
+代运营白标交付：Team.whiteLabelConfig + TeamSettings UI(品牌色/Logo/隐藏VocosAI) + 报告导出器白标集成
+
+---
+
+## v3.8.0 — Demo 数据 (2026-06-07) | v3.7.0 — 报告真实数据 | v3.6.0 — 质检升级
+
+---
+
 ## v3.5.0 — 工作台增强 (2026-06-07)
 
 ### WorkspacePage 升级
