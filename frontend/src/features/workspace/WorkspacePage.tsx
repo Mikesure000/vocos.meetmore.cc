@@ -1,20 +1,24 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  Box, Typography, Card, CardContent, Grid, Button, Chip,
+  Box, Typography, Card, CardContent, Grid, Button, Chip, Tooltip,
   Table, TableBody, TableCell, TableRow,
 } from '@mui/material';
-import { Add, Assessment, TrendingUp, Insights, Description, Comment, AutoAwesome, ContentPaste, Replay, Category } from '@mui/icons-material';
+import { Add, Assessment, TrendingUp, Insights, Description, Comment, AutoAwesome, ContentPaste, Replay, Category, CheckCircle, Error } from '@mui/icons-material';
 import { apiClient } from '../../shared/api/client';
 import { PageShell } from '../../shared/components/PageShell';
 
 export default function WorkspacePage() {
   const navigate = useNavigate();
   const [stats, setStats] = useState<any>({});
+  const [health, setHealth] = useState<any>({});
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    apiClient.get('/api/workspace/stats').then((r) => setStats(r.data)).finally(() => setLoading(false));
+    Promise.all([
+      apiClient.get('/api/workspace/stats').then((r) => setStats(r.data)),
+      apiClient.get('/api/workspace/health').then((r) => setHealth(r.data)).catch(()=>{}),
+    ]).finally(() => setLoading(false));
   }, []);
 
   if (loading) return <PageShell loading skeleton />;
@@ -39,7 +43,19 @@ export default function WorkspacePage() {
     <Box>
       <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
         <Box>
-          <Typography variant="h4" fontWeight={700}>工作台</Typography>
+          <Box display="flex" alignItems="center" gap={1}>
+            <Typography variant="h4" fontWeight={700}>工作台</Typography>
+            {health.status && (
+              <Tooltip title={`DB: ${health.db?.status} | AI: ${health.aiPipeline?.mode} | v${health.version}`}>
+                <Chip
+                  icon={health.status === 'healthy' ? <CheckCircle /> : <Error />}
+                  label={health.status === 'healthy' ? '系统正常' : '异常'}
+                  size="small" color={health.status === 'healthy' ? 'success' : 'error'}
+                  variant="outlined"
+                />
+              </Tooltip>
+            )}
+          </Box>
           <Typography variant="body2" color="text.secondary">Voice of Consumer OS — 评论驱动内容策略系统</Typography>
         </Box>
         <Button variant="contained" startIcon={<Add />} onClick={() => navigate('/projects')}>
