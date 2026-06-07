@@ -53,11 +53,12 @@ model Team {
   createdAt        DateTime @default(now()) @map("created_at")
   updatedAt        DateTime @updatedAt @map("updated_at")
 
-  owner       User         @relation("TeamOwner", fields: [ownerUserId], references: [id])
+  owner       User           @relation("TeamOwner", fields: [ownerUserId], references: [id])
   members     TeamMember[]
   projects    Project[]
   tasks       AnalysisTask[]
   auditLogs   AuditLog[]
+  brands      Brand[]
 
   @@map("teams")
 }

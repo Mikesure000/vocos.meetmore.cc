@@ -378,13 +378,14 @@ async function main() {
       const record = await prisma.comment.create({
         data: {
           taskId: task.id,
-          content: c.content,
+          commentIdExternal: `demo_comment_${Math.random().toString(36).slice(2, 10)}`,
+          commentText: c.content,
           signalLabels: JSON.stringify(c.signalLabels),
           valueScore: c.valueScore,
           cleanStatus: c.cleanStatus,
           sentiment: c.signalLabels.includes('negative_experience') ? 'negative' : c.signalLabels.includes('trust_gap') ? 'negative' : 'positive',
-          authorId: `demo_user_${Math.random().toString(36).slice(2, 8)}`,
-          createdAt: new Date(Date.now() - Math.random() * 86400000 * 7),
+          userIdHash: `demo_user_${Math.random().toString(36).slice(2, 8)}`,
+          createdAtExternal: new Date(Date.now() - Math.random() * 86400000 * 7),
         },
       });
       commentRecords.push(record);
