@@ -8,6 +8,7 @@ import { runLogger } from '../governance/run-logger.js';
 import { prisma } from '../../../config/prisma.js';
 import { env } from '../../../config/env.js';
 import { autoSelectSkills, buildAgentPrompt } from '../skills/skill-registry.js';
+import { analysisService } from '../../insight/analysis.service.js';
 import type { Skill } from '../skills/skill-registry.js';
 
 interface StepConfig {
@@ -103,6 +104,16 @@ export class TaskOrchestrator {
         });
         return;
       }
+    }
+
+    // Save pipeline results to DB (v3.1: bridge Pipeline → DB → Frontend)
+    try {
+      const resultsObj: Record<string, any> = {};
+      this.results.forEach((value, key) => { resultsObj[key] = value; });
+      await analysisService.savePipelineResults(context.taskId, resultsObj);
+      console.log(`[Orchestrator] Analysis results saved to DB for task ${context.taskId}`);
+    } catch (err) {
+      console.error(`[Orchestrator] Failed to save analysis results:`, err);
     }
 
     // Mark complete

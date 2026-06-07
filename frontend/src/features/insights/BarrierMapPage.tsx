@@ -23,12 +23,26 @@ export default function BarrierMapPage() {
   if (loading) return <Box display="flex" justifyContent="center" py={8}><CircularProgress /></Box>;
   if (!data) return <Typography>暂无数据</Typography>;
 
+  const isMock = data._source === 'mock';
+
   return (
     <Box>
       <Box display="flex" alignItems="center" gap={1} mb={3}>
         <Button startIcon={<ArrowBack />} onClick={() => navigate(`/projects/${projectId}/tasks/${taskId}/insights`)}>返回</Button>
         <Typography variant="h4" fontWeight={700}>购买障碍地图</Typography>
+        <Chip
+          label={isMock ? '示例数据' : 'AI 分析'}
+          size="small"
+          color={isMock ? 'warning' : 'success'}
+          variant="outlined"
+        />
       </Box>
+
+      {isMock && (
+        <Alert severity="warning" sx={{ mb: 2 }}>
+          当前展示的是示例数据。启动分析任务后，AI Pipeline 将基于真实评论生成障碍分析。
+        </Alert>
+      )}
 
       <Grid container spacing={3}>
         {data.barriers?.map((b: any, i: number) => (

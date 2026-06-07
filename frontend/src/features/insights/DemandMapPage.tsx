@@ -20,6 +20,7 @@ export default function DemandMapPage() {
   if (loading) return <Box display="flex" justifyContent="center" py={8}><CircularProgress /></Box>;
   if (!data) return <Typography>暂无数据</Typography>;
 
+  const isMock = data._source === 'mock';
   const freqColor: Record<string, string> = { high: '#f44336', medium: '#ff9800', low: '#4caf50' };
   const intensityWidth: Record<string, number> = { strong: 90, moderate: 60, weak: 30 };
 
@@ -28,7 +29,19 @@ export default function DemandMapPage() {
       <Box display="flex" alignItems="center" gap={1} mb={3}>
         <Button startIcon={<ArrowBack />} onClick={() => navigate(`/projects/${projectId}/tasks/${taskId}/insights`)}>返回</Button>
         <Typography variant="h4" fontWeight={700}>用户需求地图</Typography>
+        <Chip
+          label={isMock ? '示例数据' : 'AI 分析'}
+          size="small"
+          color={isMock ? 'warning' : 'success'}
+          variant="outlined"
+        />
       </Box>
+
+      {isMock && (
+        <Alert severity="warning" sx={{ mb: 2 }}>
+          当前展示的是示例数据。启动分析任务后，AI Pipeline 将基于真实评论生成需求分析。
+        </Alert>
+      )}
 
       <Grid container spacing={3}>
         {data.demands?.map((d: any, i: number) => (
