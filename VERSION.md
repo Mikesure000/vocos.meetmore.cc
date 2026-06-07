@@ -1,5 +1,21 @@
 # VocosAI 版本记录
 
+## v3.5.0 — 工作台增强 (2026-06-07)
+
+### WorkspacePage 升级
+- **8 卡片布局**：新增生产卡、复盘数卡片
+- **品类分布**：三大品类项目数，可点击跳转知识库
+- **最近任务**：显示品类标签 + 项目名
+- **backend**：workspace stats 新增 productionCards/reviews/categoryStats
+
+---
+
+## v3.4.0 — Mock 清理 (2026-06-07)
+
+comment-cleaning DB 真实统计 / reply-chains DB 查询 / AdFitPage+CommentOpsPage API驱动
+
+---
+
 ## v3.3.0 — 内容生产卡 Mock→API 升级 (2026-06-07)
 
 ### 生产卡页面全面升级
