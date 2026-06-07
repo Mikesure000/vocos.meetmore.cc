@@ -189,6 +189,33 @@ async function main() {
     },
   });
 
+  // Create demo brands
+  if (await prisma.brand.count() === 0) {
+    await prisma.brand.create({
+      data: {
+        teamId: team.id,
+        name: '完美日记',
+        industry: '美妆护肤',
+        positioning: '新锐国货美妆品牌，主打高性价比和设计美学',
+        tone: '年轻、时尚、自信',
+        sellingPoints: JSON.stringify(['高显色', '持久不沾杯', '滋润丝滑', '国潮设计', '成分创新']),
+        taboos: JSON.stringify(['贬低国货', '过度承诺效果', '医疗暗示']),
+      },
+    });
+    await prisma.brand.create({
+      data: {
+        teamId: team.id,
+        name: '花西子',
+        industry: '美妆护肤',
+        positioning: '东方美学高端彩妆品牌',
+        tone: '优雅、文化自信、东方美',
+        sellingPoints: JSON.stringify(['东方雕刻设计', '养肤配方', '高端质感', '文化IP']),
+        taboos: JSON.stringify(['价格贬低', '西方风格对标', '过度承诺']),
+      },
+    });
+    console.log('Brands seeded: 完美日记, 花西子');
+  }
+
   // Create demo project
   await prisma.project.upsert({
     where: { id: 'demo-project' },

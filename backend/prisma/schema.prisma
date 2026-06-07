@@ -101,6 +101,45 @@ model Category {
 }
 
 // ============================================================
+// 品牌
+// ============================================================
+
+model Brand {
+  id            String   @id @default(uuid())
+  teamId        String   @map("team_id")
+  name          String
+  industry      String?
+  positioning   String?  // 品牌定位
+  tone          String?  // 品牌调性
+  sellingPoints String?  @map("selling_points") // JSON: 核心卖点列表
+  taboos        String?  // JSON: 禁用表达列表
+  competitorIds String?  @map("competitor_ids") // JSON: 竞品ID列表
+  status        String   @default("active")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  team     Team          @relation(fields: [teamId], references: [id])
+  products BrandProduct[]
+
+  @@map("brands")
+}
+
+model BrandProduct {
+  id          String   @id @default(uuid())
+  brandId     String   @map("brand_id")
+  name        String
+  description String?
+  category    String?
+  priceRange  String?  @map("price_range")
+  status      String   @default("active")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  brand Brand @relation(fields: [brandId], references: [id])
+
+  @@map("brand_products")
+}
+
+// ============================================================
 // 项目
 // ============================================================
 

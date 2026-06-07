@@ -1,35 +1,38 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Box, Typography, Card, CardContent, Button, Grid, Chip,
   Dialog, DialogTitle, DialogContent, DialogActions, TextField,
-  IconButton,
+  CircularProgress,
 } from '@mui/material';
-import { Add, Store, Edit, Delete, Bookmark } from '@mui/icons-material';
-
-interface Brand {
-  id: string;
-  name: string;
-  industry: string;
-  products: number;
-  tasks: number;
-}
+import { Add, Store } from '@mui/icons-material';
+import { apiClient } from '../../shared/api/client';
+import { useSnackbar } from 'notistack';
 
 export default function BrandListPage() {
   const navigate = useNavigate();
+  const { enqueueSnackbar } = useSnackbar();
+  const [brands, setBrands] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
-  const [brands, setBrands] = useState<Brand[]>([
-    { id: '1', name: '完美日记', industry: '美妆护肤', products: 12, tasks: 5 },
-    { id: '2', name: '花西子', industry: '美妆护肤', products: 8, tasks: 3 },
-    { id: '3', name: '三顿半', industry: '食品饮料', products: 6, tasks: 2 },
-  ]);
   const [form, setForm] = useState({ name: '', industry: '' });
 
-  const handleCreate = () => {
-    setBrands([...brands, { id: String(Date.now()), name: form.name, industry: form.industry, products: 0, tasks: 0 }]);
-    setDialogOpen(false);
-    setForm({ name: '', industry: '' });
+  useEffect(() => {
+    apiClient.get('/api/brands').then(r => setBrands(r.data)).catch(() => {}).finally(() => setLoading(false));
+  }, []);
+
+  const handleCreate = async () => {
+    if (!form.name) return;
+    try {
+      const res = await apiClient.post('/api/brands', { ...form, teamId: 'default' });
+      setBrands([res.data, ...brands]);
+      setDialogOpen(false);
+      setForm({ name: '', industry: '' });
+      enqueueSnackbar('品牌已创建', { variant: 'success' });
+    } catch { enqueueSnackbar('创建失败', { variant: 'error' }); }
   };
+
+  if (loading) return <Box display="flex" justifyContent="center" py={8}><CircularProgress /></Box>;
 
   return (
     <Box>
@@ -39,31 +42,25 @@ export default function BrandListPage() {
       </Box>
 
       <Grid container spacing={3}>
-        {brands.map((brand) => (
-          <Grid size={{ xs: 12, sm: 6, md: 4 }} key={brand.id}>
-            <Card sx={{ cursor: 'pointer', '&:hover': { boxShadow: 4 } }}
-              onClick={() => navigate(`/brands/${brand.id}/knowledge`)}>
+        {brands.length === 0 && (
+          <Grid size={12}><Card><CardContent sx={{ textAlign: 'center', py: 8 }}>
+            <Store sx={{ fontSize: 64, color: 'text.disabled', mb: 2 }} />
+            <Typography variant="h6" color="text.secondary">暂无品牌</Typography>
+            <Button variant="outlined" sx={{ mt: 2 }} onClick={() => setDialogOpen(true)}>添加第一个品牌</Button>
+          </CardContent></Card></Grid>
+        )}
+        {brands.map((b) => (
+          <Grid size={{ xs: 12, sm: 6, md: 4 }} key={b.id}>
+            <Card sx={{ cursor: 'pointer', '&:hover': { boxShadow: 4 } }} onClick={() => navigate(`/brands/${b.id}/knowledge`)}>
               <CardContent>
-                <Box display="flex" justifyContent="space-between" alignItems="start">
-                  <Box>
-                    <Typography variant="h6">{brand.name}</Typography>
-                    <Chip label={brand.industry} size="small" variant="outlined" />
-                  </Box>
-                  <Box display="flex" gap={0.5}>
-                    <IconButton size="small"><Edit fontSize="small" /></IconButton>
-                    <IconButton size="small" color="error"><Delete fontSize="small" /></IconButton>
-                  </Box>
+                <Typography variant="h6">{b.name}</Typography>
+                {b.industry && <Chip label={b.industry} size="small" sx={{ mt: 0.5 }} />}
+                <Box mt={1} display="flex" gap={1}>
+                  {b.positioning && <Typography variant="caption" color="text.secondary">{b.positioning}</Typography>}
                 </Box>
-                <Box display="flex" gap={3} mt={2}>
-                  <Box>
-                    <Typography variant="h6">{brand.products}</Typography>
-                    <Typography variant="caption" color="text.secondary">产品</Typography>
-                  </Box>
-                  <Box>
-                    <Typography variant="h6">{brand.tasks}</Typography>
-                    <Typography variant="caption" color="text.secondary">分析任务</Typography>
-                  </Box>
-                </Box>
+                <Typography variant="caption" color="text.disabled" display="block" mt={0.5}>
+                  {b._count?.products || 0} 个产品
+                </Typography>
               </CardContent>
             </Card>
           </Grid>
@@ -73,12 +70,12 @@ export default function BrandListPage() {
       <Dialog open={dialogOpen} onClose={() => setDialogOpen(false)} maxWidth="sm" fullWidth>
         <DialogTitle>添加品牌</DialogTitle>
         <DialogContent>
-          <TextField fullWidth label="品牌名称" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} margin="normal" />
-          <TextField fullWidth label="行业" value={form.industry} onChange={(e) => setForm({ ...form, industry: e.target.value })} margin="normal" />
+          <TextField fullWidth label="品牌名称" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} margin="normal" required />
+          <TextField fullWidth label="行业" value={form.industry} onChange={e => setForm({ ...form, industry: e.target.value })} margin="normal" />
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setDialogOpen(false)}>取消</Button>
-          <Button variant="contained" onClick={handleCreate}>添加</Button>
+          <Button variant="contained" onClick={handleCreate} disabled={!form.name}>创建</Button>
         </DialogActions>
       </Dialog>
     </Box>
