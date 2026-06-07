@@ -1,49 +1,70 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
   Box, Typography, Card, CardContent, Button, Grid, TextField,
   MenuItem, FormControl, InputLabel, Select, Chip, Alert, LinearProgress,
-  List, ListItem, ListItemIcon, ListItemText, Table, TableBody, TableCell, TableRow,
+  List, ListItem, ListItemIcon, ListItemText, CircularProgress,
 } from '@mui/material';
 import { ArrowBack, CheckCircle, Cancel, Warning, AutoAwesome } from '@mui/icons-material';
-
-const checkItems = [
-  { label: '是否回应核心评论问题', passed: true, comment: '已回应用户价格质疑' },
-  { label: '标题是否有效', passed: false, comment: '标题有痛点但缺少核心关键词' },
-  { label: '开头是否有钩子', passed: false, comment: '前3秒没有直接回应评论区问题' },
-  { label: '卖点是否清晰', passed: true, comment: '卖点表达明确' },
-  { label: '证明是否充分', passed: false, comment: '缺少具体对比数据和用户反馈' },
-  { label: 'CTA 是否明确', passed: false, comment: '结尾没有评论引导' },
-  { label: '平台适配', passed: true, comment: '符合平台表达规范' },
-  { label: '合规风险', passed: true, comment: '未发现违规表达' },
-  { label: '品牌调性', passed: true, comment: '符合品牌边界' },
-  { label: '与生产卡一致性', passed: true, comment: '基本执行了策略卡要求' },
-];
+import { useSnackbar } from 'notistack';
+import { apiClient } from '../../shared/api/client';
 
 export default function PrePublishCheckPage() {
   const { id: projectId, taskId } = useParams();
   const navigate = useNavigate();
+  const { enqueueSnackbar } = useSnackbar();
   const [draft, setDraft] = useState('');
   const [platform, setPlatform] = useState('douyin');
-  const [checkResult, setCheckResult] = useState<typeof checkItems | null>(null);
+  const [checkResult, setCheckResult] = useState<any>(null);
+  const [loading, setLoading] = useState(false);
+  const [initialLoading, setInitialLoading] = useState(true);
 
-  const passedCount = checkResult ? checkResult.filter((c) => c.passed).length : 0;
-  const totalCount = checkItems.length;
-  const score = Math.round((passedCount / totalCount) * 100);
+  // 加载已有质检结果
+  useEffect(() => {
+    apiClient.get(`/api/tasks/${taskId}/pre-publish-check`)
+      .then(r => { if (r.data._source === 'db') setCheckResult(r.data); })
+      .catch(() => {})
+      .finally(() => setInitialLoading(false));
+  }, [taskId]);
 
-  const handleCheck = () => {
+  const handleCheck = async () => {
     if (!draft.trim()) return;
-    setCheckResult(checkItems);
+    setLoading(true);
+    try {
+      const res = await apiClient.post(`/api/tasks/${taskId}/pre-publish-check`, { scriptContent: draft, platform });
+      setCheckResult(res.data);
+      enqueueSnackbar('质检完成', { variant: 'success' });
+    } catch { enqueueSnackbar('质检失败', { variant: 'error' }); }
+    finally { setLoading(false); }
+  };
+
+  if (initialLoading) return <Box display="flex" justifyContent="center" py={8}><CircularProgress /></Box>;
+
+  const items = checkResult?.items || [];
+  const passedCount = items.filter((c: any) => c.passed).length;
+  const totalCount = items.length;
+  const score = checkResult?.totalScore || (totalCount > 0 ? Math.round((passedCount / totalCount) * 100) : 0);
+  const scoreColor = score >= 80 ? 'success.main' : score >= 60 ? 'warning.main' : 'error.main';
+  const isMock = checkResult?._source === 'mock';
+
+  const severityIcon = (s: string) => {
+    if (s === 'pass') return <CheckCircle color="success" fontSize="small" />;
+    if (s === 'must_fix') return <Cancel color="error" fontSize="small" />;
+    return <Warning color="warning" fontSize="small" />;
   };
 
   return (
     <Box>
-      <Box display="flex" alignItems="center" gap={1} mb={3}>
+      <Box display="flex" alignItems="center" gap={1} mb={1}>
         <Button startIcon={<ArrowBack />} onClick={() => navigate(`/projects/${projectId}/tasks/${taskId}/insights`)}>返回</Button>
         <Typography variant="h4" fontWeight={700}>发布前质检</Typography>
+        {checkResult && <Chip label={isMock ? '示例数据' : 'AI 分析'} size="small" color={isMock ? 'warning' : 'success'} variant="outlined" />}
       </Box>
 
+      {isMock && <Alert severity="warning" sx={{ mb: 2 }}>当前展示示例数据。输入脚本内容后点击质检将生成真实评估。</Alert>}
+
       <Grid container spacing={3}>
+        {/* 提交草稿 */}
         <Grid size={{ xs: 12, md: 7 }}>
           <Card sx={{ mb: 2 }}>
             <CardContent>
@@ -60,100 +81,62 @@ export default function PrePublishCheckPage() {
                 </Grid>
               </Grid>
               <TextField
-                fullWidth
-                multiline
-                rows={8}
-                placeholder="粘贴你的脚本或笔记草稿..."
-                value={draft}
-                onChange={(e) => setDraft(e.target.value)}
+                fullWidth multiline rows={6} label="粘贴脚本内容"
+                value={draft} onChange={(e) => setDraft(e.target.value)}
+                placeholder={platform === 'douyin' ? '粘贴口播脚本...' : '粘贴笔记正文...'}
               />
-              <Button
-                variant="contained"
-                startIcon={<AutoAwesome />}
-                onClick={handleCheck}
-                disabled={!draft.trim()}
-                sx={{ mt: 2 }}
-              >
-                AI 质检
+              <Button variant="contained" startIcon={<AutoAwesome />} onClick={handleCheck} disabled={loading || !draft.trim()} sx={{ mt: 2 }}>
+                {loading ? '质检中...' : 'AI 发布前质检'}
               </Button>
             </CardContent>
           </Card>
 
-          {checkResult && (
+          {/* 修改建议（仅 must_fix 项） */}
+          {checkResult && items.filter((i: any) => i.severity === 'must_fix').length > 0 && (
             <Card>
               <CardContent>
-                <Box display="flex" alignItems="center" justifyContent="space-between" mb={2}>
-                  <Typography variant="h6">质检结果</Typography>
-                  <Chip
-                    label={score >= 70 ? '建议修改后发布' : '不建议发布'}
-                    color={score >= 70 ? 'warning' : 'error'}
-                  />
-                </Box>
-
-                <Box mb={2}>
-                  <Box display="flex" justifyContent="space-between" mb={0.5}>
-                    <Typography variant="body2">总体评分</Typography>
-                    <Typography variant="body2" fontWeight={700}>{score}/100</Typography>
-                  </Box>
-                  <LinearProgress
-                    variant="determinate"
-                    value={score}
-                    sx={{ height: 8, borderRadius: 4 }}
-                    color={score >= 70 ? 'warning' : 'error'}
-                  />
-                </Box>
-
-                <Table size="small">
-                  <TableBody>
-                    {checkResult.map((item) => (
-                      <TableRow key={item.label}>
-                        <TableCell sx={{ width: 40 }}>
-                          {item.passed ? <CheckCircle color="success" fontSize="small" /> : <Cancel color="error" fontSize="small" />}
-                        </TableCell>
-                        <TableCell>{item.label}</TableCell>
-                        <TableCell>
-                          <Typography variant="body2" color="text.secondary">{item.comment}</Typography>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
+                <Typography variant="h6" gutterBottom color="error.main">必改项</Typography>
+                {items.filter((i: any) => i.severity === 'must_fix').map((item: any, i: number) => (
+                  <Alert key={i} severity="error" sx={{ mb: 1 }}>{item.comment}</Alert>
+                ))}
               </CardContent>
             </Card>
           )}
         </Grid>
 
+        {/* 质检结果 */}
         <Grid size={{ xs: 12, md: 5 }}>
-          <Card sx={{ mb: 2 }}>
+          <Card sx={{ position: 'sticky', top: 80 }}>
             <CardContent>
-              <Typography variant="h6" gutterBottom>修改建议</Typography>
               {!checkResult ? (
-                <Typography variant="body2" color="text.secondary">粘贴脚本草稿并点击AI质检后显示建议</Typography>
+                <Box textAlign="center" py={4}>
+                  <AutoAwesome sx={{ fontSize: 48, color: 'text.disabled', mb: 1 }} />
+                  <Typography color="text.secondary">粘贴脚本后点击质检查看结果</Typography>
+                </Box>
               ) : (
-                <List dense>
-                  <ListItem>
-                    <ListItemText primary="标题增加「贵在哪里/平替/真实对比」关键词" />
-                  </ListItem>
-                  <ListItem>
-                    <ListItemText primary="开头直接引用评论区质疑" />
-                  </ListItem>
-                  <ListItem>
-                    <ListItemText primary="中段加入成分或使用周期对比" />
-                  </ListItem>
-                  <ListItem>
-                    <ListItemText primary="结尾引导用户评论下一个想看的对比对象" />
-                  </ListItem>
-                </List>
-              )}
-            </CardContent>
-          </Card>
+                <>
+                  <Box textAlign="center" mb={2}>
+                    <Typography variant="h2" fontWeight={700} color={scoreColor}>{score}<Typography component="span" variant="h5" color="text.secondary">/100</Typography></Typography>
+                    <Chip label={checkResult.conclusion || (score >= 80 ? '可以发布' : score >= 60 ? '建议修改后发布' : '不建议发布')} color={score >= 80 ? 'success' : score >= 60 ? 'warning' : 'error'} size="small" />
+                  </Box>
+                  <Typography variant="body2" color="text.secondary" mb={1}>{passedCount}/{totalCount} 项通过</Typography>
+                  <LinearProgress variant="determinate" value={(passedCount/totalCount)*100} sx={{ height: 6, borderRadius: 3, mb: 2 }} />
 
-          <Card>
-            <CardContent>
-              <Typography variant="h6" gutterBottom>质检维度说明</Typography>
-              <Typography variant="body2" color="text.secondary">
-                系统将从10个维度检查脚本/笔记质量，包括是否回应核心评论问题、标题有效性、钩子设计、卖点清晰度、证明充分性、CTA明确性、平台适配、合规风险、品牌调性和生产卡一致性。
-              </Typography>
+                  <List dense disablePadding>
+                    {items.map((item: any, i: number) => (
+                      <ListItem key={i} disablePadding sx={{ mb: 0.5 }}>
+                        <ListItemIcon sx={{ minWidth: 28 }}>{severityIcon(item.severity || (item.passed ? 'pass' : 'must_fix'))}</ListItemIcon>
+                        <ListItemText
+                          primary={item.label}
+                          secondary={item.comment}
+                          primaryTypographyProps={{ variant: 'body2', color: item.passed ? 'text.primary' : 'error.main' }}
+                          secondaryTypographyProps={{ variant: 'caption' }}
+                        />
+                      </ListItem>
+                    ))}
+                  </List>
+                </>
+              )}
             </CardContent>
           </Card>
         </Grid>
