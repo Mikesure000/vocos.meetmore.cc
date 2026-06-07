@@ -1,6 +1,25 @@
 # VocosAI 版本记录
 
-## v3.0.0 — 蓝图重构：品类系统+复盘闭环+全链路迁移 (2026-06-06)
+## v3.2.0 — AI Pipeline ↔ DB 数据桥 (2026-06-07)
+
+### Mock → DB 数据链路打通
+**问题**：AI Pipeline（17 Agent）在运行，但洞察页面全读硬编码 Mock。
+
+**方案**：
+- **analysis.service.ts**：新建服务层，`getOrMock` 模式（DB 优先 → Mock 降级）
+- **analysis.routes.ts**：6 个 insight 端点改用 service，返回 `_source: "db"|"mock"`
+- **orchestrator.ts**：Pipeline 完成后 `savePipelineResults()` 写入 DB 表
+- **前端**：4 页面头部显示 "示例数据" / "AI 分析" Chip，Mock 时顶部 Alert 提示
+
+---
+
+## v3.1.0 — 动态导航 (2026-06-07)
+
+6 组任务上下文感知导航，进入任务页面自动展开分析链路+策略生产+质检复盘。
+
+---
+
+## v3.0.0 — 蓝图重构：品类系统+复盘闭环 (2026-06-06)
 
 ### 产品定位升级
 从"宽泛的 AI Agent 平台"转型为**三大品类（美妆护肤/母婴健康/功效食品）AI 内容策略生产系统**，
