@@ -26,6 +26,7 @@ import { categoryRoutes } from './modules/category/category.routes.js';
 import { reviewRoutes } from './modules/review/review.routes.js';
 import { brandRoutes } from './modules/brand/brand.routes.js';
 import { registerErrorHandler } from './middleware/error-handler.js';
+import { autoInit } from './config/auto-init.js';
 
 const app = Fastify({ logger: env.NODE_ENV === 'development' });
 
@@ -64,6 +65,9 @@ await app.register(brandRoutes, { prefix: '/api' });
 
 // Error handler (must be registered after all routes)
 registerErrorHandler(app);
+
+// Auto-initialize essential data before starting
+await autoInit();
 
 // Start
 try {
