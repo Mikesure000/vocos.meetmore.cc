@@ -3,121 +3,119 @@ generator client {
 }
 
 datasource db {
-  provider = "sqlite"
+  provider = "mysql"
   url      = env("DATABASE_URL")
 }
 
-// ============================================================
+// ════════════════════════════════════════════
 // 用户与认证
-// ============================================================
+// ════════════════════════════════════════════
 
 model User {
   id           String   @id @default(uuid())
-  email        String   @unique
-  name         String
-  phone        String?
-  passwordHash String   @map("password_hash")
-  avatarUrl    String?  @map("avatar_url")
-  status       String   @default("active") // active, disabled
-  role         String   @default("member") // super_admin, team_admin, member
-  createdAt    DateTime @default(now()) @map("created_at")
-  updatedAt    DateTime @updatedAt @map("updated_at")
+  _openid      String   @default("") @db.VarChar(64)
+  email        String   @unique @db.VarChar(255)
+  name         String   @db.VarChar(255)
+  phone        String?  @db.VarChar(32)
+  passwordHash String   @map("password_hash") @db.VarChar(255)
+  avatarUrl    String?  @map("avatar_url") @db.Text
+  status       String   @default("active") @db.VarChar(32)
+  role         String   @default("member") @db.VarChar(32)
+  createdAt    DateTime @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt    DateTime @updatedAt @map("updated_at") @db.DateTime(3)
 
-  ownedTeams    Team[]     @relation("TeamOwner")
+  ownedTeams    Team[]
   teamMembers   TeamMember[]
   createdProjects Project[] @relation("ProjectCreator")
   createdTasks    AnalysisTask[] @relation("TaskCreator")
-  qualityFeedbacks AiQualityFeedback[]
-  exports         Export[]
-  shareLinks      ShareLink[] @relation("ShareLinkCreator")
-  auditLogs       AuditLog[]
-  aiRuns          AiRun[] @relation("AiRunCreator")
-  reviewCreators  PostPublishReview[] @relation("ReviewCreator")
 
   @@map("users")
 }
 
-// ============================================================
+// ════════════════════════════════════════════
 // 团队与权限
-// ============================================================
+// ════════════════════════════════════════════
 
 model Team {
   id               String   @id @default(uuid())
-  teamName         String   @map("team_name")
-  ownerUserId      String   @map("owner_user_id")
-  planType         String   @default("free") @map("plan_type") // free, pro, enterprise
-  monthlyQuota     Int      @default(1000000) @map("monthly_quota") // token
+  _openid          String   @default("") @db.VarChar(64)
+  teamName         String   @map("team_name") @db.VarChar(255)
+  ownerUserId      String   @map("owner_user_id") @db.VarChar(36)
+  planType         String   @default("free") @map("plan_type") @db.VarChar(32)
+  monthlyQuota     Int      @default(1000000) @map("monthly_quota")
   usedQuota        Int      @default(0) @map("used_quota")
-  whiteLabelConfig String?  @map("white_label_config") // JSON: { companyName, logo, primaryColor, hideVocosBrand }
-  status           String   @default("active")
-  createdAt        DateTime @default(now()) @map("created_at")
-  updatedAt        DateTime @updatedAt @map("updated_at")
+  whiteLabelConfig Json?    @map("white_label_config")
+  status           String   @default("active") @db.VarChar(32)
+  createdAt        DateTime @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt        DateTime @updatedAt @map("updated_at") @db.DateTime(3)
 
-  owner       User           @relation("TeamOwner", fields: [ownerUserId], references: [id])
-  members     TeamMember[]
-  projects    Project[]
-  tasks       AnalysisTask[]
-  auditLogs   AuditLog[]
-  brands      Brand[]
+  owner     User         @relation("TeamOwner", fields: [ownerUserId], references: [id])
+  members   TeamMember[]
+  projects  Project[]
+  tasks     AnalysisTask[]
+  brands    Brand[]
 
   @@map("teams")
 }
 
 model TeamMember {
   id       String   @id @default(uuid())
-  teamId   String   @map("team_id")
-  userId   String   @map("user_id")
-  role     String   @default("member") // team_admin, project_lead, content_lead, content_member, ad_member, client_viewer
-  status   String   @default("active")
-  joinedAt DateTime @default(now()) @map("joined_at")
+  _openid  String   @default("") @db.VarChar(64)
+  teamId   String   @map("team_id") @db.VarChar(36)
+  userId   String   @map("user_id") @db.VarChar(36)
+  role     String   @default("member") @db.VarChar(32)
+  status   String   @default("active") @db.VarChar(32)
+  joinedAt DateTime @default(now()) @map("joined_at") @db.DateTime(3)
 
-  team     Team @relation(fields: [teamId], references: [id])
-  user     User @relation(fields: [userId], references: [id])
+  team Team @relation(fields: [teamId], references: [id])
+  user User @relation(fields: [userId], references: [id])
 
   @@unique([teamId, userId])
   @@map("team_members")
 }
 
-// ============================================================
+// ════════════════════════════════════════════
 // 品类
-// ============================================================
+// ════════════════════════════════════════════
 
 model Category {
   id                  String   @id @default(uuid())
-  name                String   @unique // 美妆护肤 / 母婴健康 / 功效食品
-  slug                String   @unique // beauty / maternal / functional-food
-  icon                String?  // emoji icon
-  description         String?
-  knowledgeBase       String   // JSON: 品类专业知识 (肤质/成分/适龄/安全/功效边界等)
-  complianceRules     String   // JSON: 合规规则列表
-  platformMethodology String   // JSON: { douyin: {...}, xiaohongshu: {...} }
+  _openid             String   @default("") @db.VarChar(64)
+  name                String   @unique @db.VarChar(255)
+  slug                String   @unique @db.VarChar(255)
+  icon                String?  @db.VarChar(16)
+  description         String?  @db.Text
+  knowledgeBase       Json     @map("knowledge_base")
+  complianceRules     Json     @map("compliance_rules")
+  platformMethodology Json     @map("platform_methodology")
   sortOrder           Int      @default(0) @map("sort_order")
-  status              String   @default("active")
-  createdAt           DateTime @default(now()) @map("created_at")
-  updatedAt           DateTime @updatedAt @map("updated_at")
+  status              String   @default("active") @db.VarChar(32)
+  createdAt           DateTime @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt           DateTime @updatedAt @map("updated_at") @db.DateTime(3)
 
   projects Project[]
 
   @@map("categories")
 }
 
-// ============================================================
+// ════════════════════════════════════════════
 // 品牌
-// ============================================================
+// ════════════════════════════════════════════
 
 model Brand {
   id            String   @id @default(uuid())
-  teamId        String   @map("team_id")
-  name          String
-  industry      String?
-  positioning   String?  // 品牌定位
-  tone          String?  // 品牌调性
-  sellingPoints String?  @map("selling_points") // JSON: 核心卖点列表
-  taboos        String?  // JSON: 禁用表达列表
-  competitorIds String?  @map("competitor_ids") // JSON: 竞品ID列表
-  status        String   @default("active")
-  createdAt     DateTime @default(now()) @map("created_at")
-  updatedAt     DateTime @updatedAt @map("updated_at")
+  _openid       String   @default("") @db.VarChar(64)
+  teamId        String   @map("team_id") @db.VarChar(36)
+  name          String   @db.VarChar(255)
+  industry      String?  @db.VarChar(255)
+  positioning   String?  @db.Text
+  tone          String?  @db.VarChar(255)
+  sellingPoints Json?    @map("selling_points")
+  taboos        Json?    
+  competitorIds Json?    @map("competitor_ids")
+  status        String   @default("active") @db.VarChar(32)
+  createdAt     DateTime @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt     DateTime @updatedAt @map("updated_at") @db.DateTime(3)
 
   team     Team          @relation(fields: [teamId], references: [id])
   products BrandProduct[]
@@ -127,37 +125,39 @@ model Brand {
 
 model BrandProduct {
   id          String   @id @default(uuid())
-  brandId     String   @map("brand_id")
-  name        String
-  description String?
-  category    String?
-  priceRange  String?  @map("price_range")
-  status      String   @default("active")
-  createdAt   DateTime @default(now()) @map("created_at")
+  _openid     String   @default("") @db.VarChar(64)
+  brandId     String   @map("brand_id") @db.VarChar(36)
+  name        String   @db.VarChar(255)
+  description String?  @db.Text
+  category    String?  @db.VarChar(255)
+  priceRange  String?  @map("price_range") @db.VarChar(64)
+  status      String   @default("active") @db.VarChar(32)
+  createdAt   DateTime @default(now()) @map("created_at") @db.DateTime(3)
 
   brand Brand @relation(fields: [brandId], references: [id])
 
   @@map("brand_products")
 }
 
-// ============================================================
+// ════════════════════════════════════════════
 // 项目
-// ============================================================
+// ════════════════════════════════════════════
 
 model Project {
-  id          String   @id @default(uuid())
-  teamId      String   @map("team_id")
-  categoryId  String?  @map("category_id")
-  projectName String   @map("project_name")
-  brandName   String?  @map("brand_name")
-  productName String?  @map("product_name")
-  industry    String?
-  description String?
-  status      String   @default("active") // active, archived
-  createdBy   String   @map("created_by")
-  createdAt   DateTime @default(now()) @map("created_at")
-  updatedAt   DateTime @updatedAt @map("updated_at")
-  deletedAt   DateTime? @map("deleted_at")
+  id          String    @id @default(uuid())
+  _openid     String    @default("") @db.VarChar(64)
+  teamId      String    @map("team_id") @db.VarChar(36)
+  categoryId  String?   @map("category_id") @db.VarChar(36)
+  projectName String    @map("project_name") @db.VarChar(255)
+  brandName   String?   @map("brand_name") @db.VarChar(255)
+  productName String?   @map("product_name") @db.VarChar(255)
+  industry    String?   @db.VarChar(255)
+  description String?   @db.Text
+  status      String    @default("active") @db.VarChar(32)
+  createdBy   String    @map("created_by") @db.VarChar(36)
+  createdAt   DateTime  @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt   DateTime  @updatedAt @map("updated_at") @db.DateTime(3)
+  deletedAt   DateTime? @map("deleted_at") @db.DateTime(3)
 
   team     Team      @relation(fields: [teamId], references: [id])
   category Category? @relation(fields: [categoryId], references: [id])
@@ -167,105 +167,69 @@ model Project {
   @@map("projects")
 }
 
-// ============================================================
+// ════════════════════════════════════════════
 // 分析任务
-// ============================================================
+// ════════════════════════════════════════════
 
 model AnalysisTask {
   id             String    @id @default(uuid())
-  teamId         String    @map("team_id")
-  projectId      String    @map("project_id")
-  taskName       String    @map("task_name")
-  platform       String    // douyin, xiaohongshu
-  contentUrl     String?   @map("content_url")
-  contentTitle   String?   @map("content_title")
-  contentBody    String?   @map("content_body")
-  contentGoal    String?   @map("content_goal")
-  contentData    String?   @map("content_data") // JSON
-  brandInfo      String?   @map("brand_info") // JSON
-  productInfo    String?   @map("product_info") // JSON
-  competitorInfo String?   @map("competitor_info") // JSON
-  outputOptions  String?   @map("output_options") // JSON
-  status         String    @default("draft") // draft, uploaded, mapping_required, ready, analyzing, completed, partially_failed, failed, archived
-  progress       String?   // JSON: { currentStep, totalSteps, steps[] }
-  createdBy      String    @map("created_by")
-  createdAt      DateTime  @default(now()) @map("created_at")
-  startedAt      DateTime? @map("started_at")
-  completedAt    DateTime? @map("completed_at")
+  _openid        String    @default("") @db.VarChar(64)
+  teamId         String    @map("team_id") @db.VarChar(36)
+  projectId      String    @map("project_id") @db.VarChar(36)
+  taskName       String    @map("task_name") @db.VarChar(255)
+  platform       String    @db.VarChar(32)
+  contentUrl     String?   @map("content_url") @db.Text
+  contentTitle   String?   @map("content_title") @db.VarChar(255)
+  contentBody    String?   @map("content_body") @db.Text
+  contentGoal    String?   @map("content_goal") @db.VarChar(64)
+  contentData    Json?     @map("content_data")
+  brandInfo      Json?     @map("brand_info")
+  productInfo    Json?     @map("product_info")
+  competitorInfo Json?     @map("competitor_info")
+  outputOptions  Json?     @map("output_options")
+  status         String    @default("draft") @db.VarChar(32)
+  progress       Json?
+  createdBy      String    @map("created_by") @db.VarChar(36)
+  createdAt      DateTime  @default(now()) @map("created_at") @db.DateTime(3)
+  startedAt      DateTime? @map("started_at") @db.DateTime(3)
+  completedAt    DateTime? @map("completed_at") @db.DateTime(3)
 
-  team    Team    @relation(fields: [teamId], references: [id])
-  project Project @relation(fields: [projectId], references: [id])
+  team    Project @relation(fields: [projectId], references: [id])
   creator User    @relation("TaskCreator", fields: [createdBy], references: [id])
 
-  commentFiles        CommentFile[]
   comments            Comment[]
-  commentThreads      CommentThread[]
   contentAnalyses     ContentAnalysis[]
   commentInsights     CommentInsight[]
-  attributionResults  AttributionResult[]
   strategyCards       StrategyCard[]
   productionCards     ProductionCard[]
-  commentOperationPlans CommentOperationPlan[]
-  adFitScores         AdFitScore[]
   prePublishChecks    PrePublishCheck[]
   reports             Report[]
-  aiRuns              AiRun[]
-  postPublishReviews  PostPublishReview[]
 
   @@map("analysis_tasks")
 }
 
-// ============================================================
+// ════════════════════════════════════════════
 // 评论数据
-// ============================================================
-
-model CommentFile {
-  id            String   @id @default(uuid())
-  taskId        String   @map("task_id")
-  fileName      String   @map("file_name")
-  filePath      String   @map("file_path")
-  fileType      String   @map("file_type") // xlsx, csv
-  fileSize      Int      @map("file_size")
-  rowCount      Int      @default(0) @map("row_count")
-  mappingConfig String?  @map("mapping_config") // JSON
-  parseStatus   String   @default("pending") @map("parse_status")
-  createdAt     DateTime @default(now()) @map("created_at")
-
-  task AnalysisTask @relation(fields: [taskId], references: [id])
-
-  @@map("comment_files")
-}
+// ════════════════════════════════════════════
 
 model Comment {
-  id                String   @id @default(uuid())
-  taskId            String   @map("task_id")
-  commentIdExternal String?  @map("comment_id_external")
-  parentCommentId   String?  @map("parent_comment_id")
-  replyToCommentId  String?  @map("reply_to_comment_id")
-  userIdHash        String?  @map("user_id_hash")
-  userNameHash      String?  @map("user_name_hash")
-  commentText       String   @map("comment_text")
-  normalizedText    String?  @map("normalized_text")
-  likeCount         Int      @default(0) @map("like_count")
-  replyCount        Int      @default(0) @map("reply_count")
-  createdAtExternal DateTime? @map("created_at_external")
-  isAuthorReply     Boolean  @default(false) @map("is_author_reply")
-  isReply           Boolean  @default(false) @map("is_reply")
-  sourceHash        String?  @map("source_hash")
-  cleanStatus       String   @default("pending") @map("clean_status")
-  valueScore        Int      @default(0) @map("value_score") // 1-5
-  sentimentLabel    String?  @map("sentiment_label")
-  intentLabel       String?  @map("intent_label")
-  signalLabels      String?  @map("signal_labels") // JSON array
-  ipLocation        String?  @map("ip_location")
-  videoId           String?  @map("video_id")
-  videoUrl          String?  @map("video_url")
-  douyinId          String?  @map("douyin_id")
-  parentCommentText String?  @map("parent_comment_text")
-  quotedCommentId   String?  @map("quoted_comment_id")
-  quotedCommentText String?  @map("quoted_comment_text")
-  extraData         String?  @map("extra_data") // JSON: 其他扩展字段
-  createdAt         DateTime @default(now()) @map("created_at")
+  id                String    @id @default(uuid())
+  _openid           String    @default("") @db.VarChar(64)
+  taskId            String    @map("task_id") @db.VarChar(36)
+  commentIdExternal String?   @map("comment_id_external") @db.VarChar(255)
+  parentCommentId   String?   @map("parent_comment_id") @db.VarChar(255)
+  userIdHash        String?   @map("user_id_hash") @db.VarChar(255)
+  commentText       String    @map("comment_text") @db.Text
+  normalizedText    String?   @map("normalized_text") @db.Text
+  likeCount         Int       @default(0) @map("like_count")
+  replyCount        Int       @default(0) @map("reply_count")
+  createdAtExternal DateTime? @map("created_at_external") @db.DateTime(3)
+  cleanStatus       String    @default("pending") @map("clean_status") @db.VarChar(32)
+  valueScore        Int       @default(0) @map("value_score")
+  sentimentLabel    String?   @map("sentiment_label") @db.VarChar(32)
+  signalLabels      Json?     @map("signal_labels")
+  extraData         Json?     @map("extra_data")
+  createdAt         DateTime  @default(now()) @map("created_at") @db.DateTime(3)
 
   task AnalysisTask @relation(fields: [taskId], references: [id])
 
@@ -274,32 +238,17 @@ model Comment {
   @@map("comments")
 }
 
-model CommentThread {
-  id               String   @id @default(uuid())
-  taskId           String   @map("task_id")
-  rootCommentId    String   @map("root_comment_id")
-  threadSummary    String?  @map("thread_summary")
-  participantsCount Int     @default(0) @map("participants_count")
-  replyCount       Int      @default(0) @map("reply_count")
-  topic            String?
-  riskLevel        String   @default("low") @map("risk_level") // low, medium, high
-  createdAt        DateTime @default(now()) @map("created_at")
-
-  task AnalysisTask @relation(fields: [taskId], references: [id])
-
-  @@map("comment_threads")
-}
-
-// ============================================================
+// ════════════════════════════════════════════
 // AI 分析结果
-// ============================================================
+// ════════════════════════════════════════════
 
 model ContentAnalysis {
   id           String   @id @default(uuid())
-  taskId       String   @map("task_id")
-  analysisJson String   @map("analysis_json")
-  createdAt    DateTime @default(now()) @map("created_at")
-  updatedAt    DateTime @updatedAt @map("updated_at")
+  _openid      String   @default("") @db.VarChar(64)
+  taskId       String   @map("task_id") @db.VarChar(36)
+  analysisJson Json     @map("analysis_json")
+  createdAt    DateTime @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt    DateTime @updatedAt @map("updated_at") @db.DateTime(3)
 
   task AnalysisTask @relation(fields: [taskId], references: [id])
 
@@ -308,42 +257,28 @@ model ContentAnalysis {
 
 model CommentInsight {
   id          String   @id @default(uuid())
-  taskId      String   @map("task_id")
-  insightType String   @map("insight_type") // demand, barrier, sentiment, competitor, high_value
-  insightJson String   @map("insight_json")
-  status      String   @default("pending") // pending, confirmed, rejected, edited
-  reviewedBy  String?  @map("reviewed_by")
-  reviewedAt  DateTime? @map("reviewed_at")
-  createdAt   DateTime @default(now()) @map("created_at")
+  _openid     String   @default("") @db.VarChar(64)
+  taskId      String   @map("task_id") @db.VarChar(36)
+  insightType String   @map("insight_type") @db.VarChar(32)
+  insightJson Json     @map("insight_json")
+  createdAt   DateTime @default(now()) @map("created_at") @db.DateTime(3)
 
   task AnalysisTask @relation(fields: [taskId], references: [id])
 
   @@map("comment_insights")
 }
 
-model AttributionResult {
-  id              String   @id @default(uuid())
-  taskId          String   @map("task_id")
-  attributionJson String   @map("attribution_json")
-  createdAt       DateTime @default(now()) @map("created_at")
-
-  task AnalysisTask @relation(fields: [taskId], references: [id])
-
-  @@map("attribution_results")
-}
-
 model StrategyCard {
   id        String   @id @default(uuid())
-  taskId    String   @map("task_id")
-  priority  String   // P0, P1, P2, not_recommended
-  title     String
-  platform  String?  // douyin, xiaohongshu, both
-  cardJson  String   @map("card_json")
-  status    String   @default("pending") // pending, adopted, edited, rejected
-  adoptedBy String?  @map("adopted_by")
-  adoptedAt DateTime? @map("adopted_at")
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
+  _openid   String   @default("") @db.VarChar(64)
+  taskId    String   @map("task_id") @db.VarChar(36)
+  priority  String   @db.VarChar(16)
+  title     String   @db.VarChar(255)
+  platform  String?  @db.VarChar(32)
+  cardJson  Json     @map("card_json")
+  status    String   @default("pending") @db.VarChar(32)
+  createdAt DateTime @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.DateTime(3)
 
   task            AnalysisTask     @relation(fields: [taskId], references: [id])
   productionCards ProductionCard[]
@@ -352,160 +287,67 @@ model StrategyCard {
 }
 
 model ProductionCard {
-  id              String   @id @default(uuid())
-  taskId          String   @map("task_id")
-  strategyCardId  String?  @map("strategy_card_id")
-  platform        String   // douyin, xiaohongshu
-  cardJson        String   @map("card_json")
-  status          String   @default("pending") // pending, adopted, edited, rejected
-  editCount       Int      @default(0) @map("edit_count")
-  adoptedAt       DateTime? @map("adopted_at")
-  createdAt       DateTime @default(now()) @map("created_at")
-  updatedAt       DateTime @updatedAt @map("updated_at")
+  id             String   @id @default(uuid())
+  _openid        String   @default("") @db.VarChar(64)
+  taskId         String   @map("task_id") @db.VarChar(36)
+  strategyCardId String?  @map("strategy_card_id") @db.VarChar(36)
+  platform       String   @db.VarChar(32)
+  cardJson       Json     @map("card_json")
+  status         String   @default("pending") @db.VarChar(32)
+  createdAt      DateTime @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt      DateTime @updatedAt @map("updated_at") @db.DateTime(3)
 
-  task          AnalysisTask  @relation(fields: [taskId], references: [id])
-  strategyCard  StrategyCard? @relation(fields: [strategyCardId], references: [id])
+  task         AnalysisTask  @relation(fields: [taskId], references: [id])
+  strategyCard StrategyCard? @relation(fields: [strategyCardId], references: [id])
 
   @@map("production_cards")
 }
 
-model CommentOperationPlan {
-  id        String   @id @default(uuid())
-  taskId    String   @map("task_id")
-  planJson  String   @map("plan_json")
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
-
-  task AnalysisTask @relation(fields: [taskId], references: [id])
-
-  @@map("comment_operation_plans")
-}
-
-model AdFitScore {
-  id        String   @id @default(uuid())
-  taskId    String   @map("task_id")
-  score     Int
-  resultJson String  @map("result_json")
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
-
-  task AnalysisTask @relation(fields: [taskId], references: [id])
-
-  @@map("ad_fit_scores")
-}
-
 model PrePublishCheck {
-  id               String   @id @default(uuid())
-  taskId           String   @map("task_id")
-  productionCardId String?  @map("production_card_id")
-  platform         String
-  draftText        String   @map("draft_text")
-  score            Int
-  checkJson        String   @map("check_json")
-  status           String   @default("pending")
-  createdBy        String   @map("created_by")
-  createdAt        DateTime @default(now()) @map("created_at")
+  id        String   @id @default(uuid())
+  _openid   String   @default("") @db.VarChar(64)
+  taskId    String   @map("task_id") @db.VarChar(36)
+  score     Int
+  checkJson Json     @map("check_json")
+  status    String   @default("pending") @db.VarChar(32)
+  createdBy String   @map("created_by") @db.VarChar(36)
+  createdAt DateTime @default(now()) @map("created_at") @db.DateTime(3)
 
   task AnalysisTask @relation(fields: [taskId], references: [id])
 
   @@map("pre_publish_checks")
 }
 
-// ============================================================
-// 发布后复盘
-// ============================================================
-
-model PostPublishReview {
-  id                       String   @id @default(uuid())
-  taskId                   String   @map("task_id")
-  newContentUrl            String?  @map("new_content_url")
-  newContentTitle          String?  @map("new_content_title")
-  newContentBody           String?  @map("new_content_body")
-  newCommentFileId         String?  @map("new_comment_file_id")
-  metrics                  String?  // JSON: { clickRate, collectRate, conversionRate, commentSentiment }
-  strategyExecutionScore   Int      @default(0) @map("strategy_execution_score") // 0-100
-  commentChangeAssessment  String?  @map("comment_change_assessment") // JSON: 变化分析
-  nextRoundSuggestions     String?  @map("next_round_suggestions") // JSON: 下轮建议
-  cardEffectivenessScore   Int      @default(0) @map("card_effectiveness_score") // 0-100
-  status                   String   @default("draft") // draft, completed
-  createdBy                String   @map("created_by")
-  createdAt                DateTime @default(now()) @map("created_at")
-  updatedAt                DateTime @updatedAt @map("updated_at")
-
-  task    AnalysisTask @relation(fields: [taskId], references: [id])
-  creator User         @relation("ReviewCreator", fields: [createdBy], references: [id])
-
-  @@map("post_publish_reviews")
-}
-
-// ============================================================
-// 报告与导出
-// ============================================================
-
 model Report {
-  id              String   @id @default(uuid())
-  taskId          String   @map("task_id")
-  reportType      String   @default("full") @map("report_type") // full, summary, custom
-  reportTitle     String   @map("report_title")
-  reportJson      String   @map("report_json")
-  markdownContent String?  @map("markdown_content")
-  version         Int      @default(1)
-  status          String   @default("draft") // draft, published
-  createdAt       DateTime @default(now()) @map("created_at")
-  updatedAt       DateTime @updatedAt @map("updated_at")
+  id          String   @id @default(uuid())
+  _openid     String   @default("") @db.VarChar(64)
+  taskId      String   @map("task_id") @db.VarChar(36)
+  reportType  String   @default("full") @map("report_type") @db.VarChar(32)
+  reportTitle String   @map("report_title") @db.VarChar(255)
+  reportJson  Json     @map("report_json")
+  version     Int      @default(1)
+  status      String   @default("draft") @db.VarChar(32)
+  createdAt   DateTime @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt   DateTime @updatedAt @map("updated_at") @db.DateTime(3)
 
-  task        AnalysisTask @relation(fields: [taskId], references: [id])
-  exports     Export[]
-  shareLinks  ShareLink[]
+  task AnalysisTask @relation(fields: [taskId], references: [id])
 
   @@map("reports")
 }
 
-model Export {
-  id         String   @id @default(uuid())
-  reportId   String   @map("report_id")
-  exportType String   @map("export_type") // markdown, pdf, word, excel, html, ppt
-  filePath   String   @map("file_path")
-  fileSize   Int      @default(0) @map("file_size")
-  status     String   @default("pending") // pending, processing, completed, failed
-  createdBy  String   @map("created_by")
-  createdAt  DateTime @default(now()) @map("created_at")
-
-  report Report @relation(fields: [reportId], references: [id])
-  user   User   @relation(fields: [createdBy], references: [id])
-
-  @@map("exports")
-}
-
-model ShareLink {
-  id           String   @id @default(uuid())
-  reportId     String   @map("report_id")
-  shareToken   String   @unique @map("share_token")
-  permission   String   @default("view") // view, comment
-  passwordHash String?  @map("password_hash")
-  expiresAt    DateTime? @map("expires_at")
-  viewCount    Int      @default(0) @map("view_count")
-  createdBy    String   @map("created_by")
-  createdAt    DateTime @default(now()) @map("created_at")
-
-  report  Report @relation(fields: [reportId], references: [id])
-  creator User   @relation("ShareLinkCreator", fields: [createdBy], references: [id])
-
-  @@map("share_links")
-}
-
-// ============================================================
+// ════════════════════════════════════════════
 // AI 治理
-// ============================================================
+// ════════════════════════════════════════════
 
 model ModelProvider {
   id              String   @id @default(uuid())
-  providerName    String   @map("provider_name") // openai, deepseek, claude, qwen
-  baseUrl         String   @map("base_url")
-  apiKeyEncrypted String   @map("api_key_encrypted")
-  status          String   @default("active")
-  createdAt       DateTime @default(now()) @map("created_at")
-  updatedAt       DateTime @updatedAt @map("updated_at")
+  _openid         String   @default("") @db.VarChar(64)
+  providerName    String   @map("provider_name") @db.VarChar(64)
+  baseUrl         String   @map("base_url") @db.VarChar(512)
+  apiKeyEncrypted String   @map("api_key_encrypted") @db.Text
+  status          String   @default("active") @db.VarChar(32)
+  createdAt       DateTime @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt       DateTime @updatedAt @map("updated_at") @db.DateTime(3)
 
   modelConfigs ModelConfig[]
 
@@ -513,210 +355,48 @@ model ModelProvider {
 }
 
 model ModelConfig {
-  id                 String   @id @default(uuid())
-  providerId         String   @map("provider_id")
-  modelName          String   @map("model_name")
-  modelType          String   @default("chat") @map("model_type") // chat, reasoning
-  contextWindow      Int      @default(128000) @map("context_window")
-  inputTokenPrice    Float    @default(0) @map("input_token_price") // per 1K tokens
-  outputTokenPrice   Float    @default(0) @map("output_token_price")
-  rateLimitPerMinute Int      @default(60) @map("rate_limit_per_minute")
-  timeoutSeconds     Int      @default(120) @map("timeout_seconds")
-  isActive           Boolean  @default(true) @map("is_active")
-  createdAt          DateTime @default(now()) @map("created_at")
-  updatedAt          DateTime @updatedAt @map("updated_at")
+  id               String   @id @default(uuid())
+  _openid          String   @default("") @db.VarChar(64)
+  providerId       String   @map("provider_id") @db.VarChar(36)
+  modelName        String   @map("model_name") @db.VarChar(255)
+  modelType        String   @default("chat") @map("model_type") @db.VarChar(32)
+  contextWindow    Int      @default(128000) @map("context_window")
+  inputTokenPrice  Float    @default(0) @map("input_token_price")
+  outputTokenPrice Float    @default(0) @map("output_token_price")
+  isActive         Boolean  @default(true) @map("is_active")
+  createdAt        DateTime @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt        DateTime @updatedAt @map("updated_at") @db.DateTime(3)
 
-  provider    ModelProvider      @relation(fields: [providerId], references: [id])
-  primaryFor  ModelRoutingRule[] @relation("PrimaryModel")
-  fallbackFor ModelRoutingRule[] @relation("FallbackModel")
+  provider ModelProvider @relation(fields: [providerId], references: [id])
 
   @@map("model_configs")
 }
 
-model ModelRoutingRule {
-  id              String   @id @default(uuid())
-  agentId         String   @map("agent_id")
-  primaryModelId  String   @map("primary_model_id")
-  fallbackModelId String?  @map("fallback_model_id")
-  routeCondition  String?  @map("route_condition") // JSON
-  maxRetries      Int      @default(3) @map("max_retries")
-  timeoutSeconds  Int      @default(300) @map("timeout_seconds")
-  costLimit       Float    @default(0) @map("cost_limit") // 0 = unlimited
-  status          String   @default("active")
-  createdAt       DateTime @default(now()) @map("created_at")
-  updatedAt       DateTime @updatedAt @map("updated_at")
-
-  primaryModel  ModelConfig  @relation("PrimaryModel", fields: [primaryModelId], references: [id])
-  fallbackModel ModelConfig? @relation("FallbackModel", fields: [fallbackModelId], references: [id])
-
-  @@map("model_routing_rules")
-}
-
 model AiAgent {
-  id              String   @id @default(uuid())
-  agentName       String   @map("agent_name")
-  agentCode       String   @unique @map("agent_code")
-  agentVersion    String   @default("1.0.0") @map("agent_version")
-  description     String?
-  inputSchemaId   String?  @map("input_schema_id")
-  outputSchemaId  String?  @map("output_schema_id")
-  defaultPromptId String?  @map("default_prompt_id")
-  status          String   @default("active")
-  executionOrder  Int      @default(0) @map("execution_order")
-  dependsOn       String?  @map("depends_on") // JSON array of agent codes
-  canParallel     Boolean  @default(false) @map("can_parallel")
-  createdAt       DateTime @default(now()) @map("created_at")
-  updatedAt       DateTime @updatedAt @map("updated_at")
-
-  aiPrompts AiPrompt[]
-  aiRuns    AiRun[]
+  id             String   @id @default(uuid())
+  _openid        String   @default("") @db.VarChar(64)
+  agentName      String   @map("agent_name") @db.VarChar(255)
+  agentCode      String   @unique @map("agent_code") @db.VarChar(64)
+  agentVersion   String   @default("1.0.0") @map("agent_version") @db.VarChar(32)
+  status         String   @default("active") @db.VarChar(32)
+  executionOrder Int      @default(0) @map("execution_order")
+  canParallel    Boolean  @default(false) @map("can_parallel")
+  createdAt      DateTime @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt      DateTime @updatedAt @map("updated_at") @db.DateTime(3)
 
   @@map("ai_agents")
 }
 
-model AiPrompt {
-  id               String   @id @default(uuid())
-  agentId          String   @map("agent_id")
-  promptName       String   @map("prompt_name")
-  currentVersionId String?  @map("current_version_id")
-  status           String   @default("active")
-  createdAt        DateTime @default(now()) @map("created_at")
-  updatedAt        DateTime @updatedAt @map("updated_at")
-
-  agent    AiAgent           @relation(fields: [agentId], references: [id])
-  versions AiPromptVersion[]
-
-  @@map("ai_prompts")
-}
-
-model AiPromptVersion {
-  id                String   @id @default(uuid())
-  promptId          String   @map("prompt_id")
-  version           String   // 1.0, 1.1, 2.0
-  systemPrompt      String   @map("system_prompt")
-  userPromptTemplate String  @map("user_prompt_template")
-  inputVariables    String?  @map("input_variables") // JSON
-  outputSchemaId    String?  @map("output_schema_id")
-  modelConfigId     String?  @map("model_config_id")
-  status            String   @default("draft") // draft, active, deprecated
-  createdBy         String   @map("created_by")
-  createdAt         DateTime @default(now()) @map("created_at")
-  changeLog         String?  @map("change_log")
-
-  prompt AiPrompt @relation(fields: [promptId], references: [id])
-
-  @@map("ai_prompt_versions")
-}
-
-model AiSchema {
-  id            String   @id @default(uuid())
-  schemaName    String   @map("schema_name")
-  schemaVersion String   @default("1.0.0") @map("schema_version")
-  schemaJson    String   @map("schema_json")
-  status        String   @default("active")
-  createdAt     DateTime @default(now()) @map("created_at")
-  updatedAt     DateTime @updatedAt @map("updated_at")
-
-  @@map("ai_schemas")
-}
-
-model AiRun {
-  id                      String   @id @default(uuid())
-  teamId                  String   @map("team_id")
-  projectId               String?  @map("project_id")
-  taskId                  String?  @map("task_id")
-  agentId                 String?  @map("agent_id")
-  agentName               String?  @map("agent_name")
-  agentVersion            String?  @map("agent_version")
-  promptId                String?  @map("prompt_id")
-  promptVersion           String?  @map("prompt_version")
-  schemaId                String?  @map("schema_id")
-  providerName            String?  @map("provider_name")
-  modelName               String?  @map("model_name")
-  modelRouteRuleId        String?  @map("model_route_rule_id")
-  inputTokenCount         Int      @default(0) @map("input_token_count")
-  outputTokenCount        Int      @default(0) @map("output_token_count")
-  totalTokenCount         Int      @default(0) @map("total_token_count")
-  estimatedCost           Float    @default(0) @map("estimated_cost")
-  actualCost              Float    @default(0) @map("actual_cost")
-  latencyMs               Int      @default(0) @map("latency_ms")
-  status                  String   @default("pending") // pending, running, success, failed, retrying
-  errorCode               String?  @map("error_code")
-  errorMessage            String?  @map("error_message")
-  retryCount              Int      @default(0) @map("retry_count")
-  fallbackUsed            Boolean  @default(false) @map("fallback_used")
-  inputHash               String?  @map("input_hash")
-  outputRaw               String?  @map("output_raw")
-  outputJson              String?  @map("output_json")
-  schemaValidationStatus  String?  @map("schema_validation_status") // pending, passed, failed
-  createdBy               String   @map("created_by")
-  createdAt               DateTime @default(now()) @map("created_at")
-  completedAt             DateTime? @map("completed_at")
-
-  agent    AiAgent?       @relation(fields: [agentId], references: [id])
-  task     AnalysisTask?  @relation(fields: [taskId], references: [id])
-  creator  User           @relation("AiRunCreator", fields: [createdBy], references: [id])
-  feedbacks AiQualityFeedback[]
-
-  @@index([teamId, createdAt])
-  @@index([taskId])
-  @@map("ai_runs")
-}
-
-model AiQualityFeedback {
-  id           String   @id @default(uuid())
-  teamId       String   @map("team_id")
-  projectId    String?  @map("project_id")
-  taskId       String?  @map("task_id")
-  agentId      String?  @map("agent_id")
-  aiRunId      String?  @map("ai_run_id")
-  outputType   String   @map("output_type") // strategy_card, production_card, insight, etc.
-  outputId     String   @map("output_id")
-  feedbackType String   @map("feedback_type") // useful, not_useful, adopted, edited, regenerated
-  feedbackScore Int?    @map("feedback_score") // 1-5
-  feedbackText String?  @map("feedback_text")
-  editDistance  Int     @default(0) @map("edit_distance")
-  createdBy     String   @map("created_by")
-  createdAt     DateTime @default(now()) @map("created_at")
-
-  aiRun  AiRun? @relation(fields: [aiRunId], references: [id])
-  user   User   @relation(fields: [createdBy], references: [id])
-
-  @@map("ai_quality_feedback")
-}
-
-model CostUsage {
-  id         String   @id @default(uuid())
-  teamId     String   @map("team_id")
-  projectId  String?  @map("project_id")
-  taskId     String?  @map("task_id")
-  agentId    String?  @map("agent_id")
-  modelId    String?  @map("model_id")
-  aiRunId    String?  @map("ai_run_id")
-  costAmount Float    @map("cost_amount")
-  tokenCount Int      @map("token_count")
-  usageDate  DateTime @default(now()) @map("usage_date")
-  createdAt  DateTime @default(now()) @map("created_at")
-
-  @@index([teamId, usageDate])
-  @@index([taskId])
-  @@map("cost_usage")
-}
-
 model AuditLog {
   id           String   @id @default(uuid())
-  teamId       String?  @map("team_id")
-  userId       String   @map("user_id")
-  action       String   // login, logout, create_task, delete_task, export_report, etc.
-  resourceType String   @map("resource_type") // task, report, project, user, etc.
-  resourceId   String?  @map("resource_id")
-  ipAddress    String?  @map("ip_address")
-  userAgent    String?  @map("user_agent")
-  metadataJson String?  @map("metadata_json")
-  createdAt    DateTime @default(now()) @map("created_at")
-
-  user User? @relation(fields: [userId], references: [id])
-  team Team? @relation(fields: [teamId], references: [id])
+  _openid      String   @default("") @db.VarChar(64)
+  teamId       String?  @map("team_id") @db.VarChar(36)
+  userId       String   @map("user_id") @db.VarChar(36)
+  action       String   @db.VarChar(64)
+  resourceType String   @map("resource_type") @db.VarChar(64)
+  resourceId   String?  @map("resource_id") @db.VarChar(36)
+  metadataJson Json?    @map("metadata_json")
+  createdAt    DateTime @default(now()) @map("created_at") @db.DateTime(3)
 
   @@index([userId, createdAt])
   @@index([teamId, createdAt])
