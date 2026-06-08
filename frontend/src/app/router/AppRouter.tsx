@@ -1,4 +1,4 @@
-import { Suspense, lazy } from 'react';
+import { Suspense, lazy, useEffect } from 'react';
 import { Routes, Route, Navigate, Outlet } from 'react-router-dom';
 import { Box, CircularProgress } from '@mui/material';
 import { useAuthStore } from '../../shared/stores/authStore';
@@ -60,7 +60,9 @@ function Loading() {
 }
 
 function ProtectedRoute() {
-  const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
+  const { isAuthenticated, isVerifying, verify } = useAuthStore();
+  useEffect(() => { verify(); }, []);
+  if (isVerifying) return <Box display="flex" justifyContent="center" alignItems="center" minHeight="100vh"><CircularProgress /></Box>;
   if (!isAuthenticated) return <Navigate to="/login" replace />;
   return <Outlet />;
 }
