@@ -157,6 +157,89 @@ export function getSignalInfo(key: string): CommentSignal | undefined {
   return COMMENT_SIGNALS.find((s) => s.key === key);
 }
 
+// ============================================================
+// 多因子评论价值评分模型 (v4.3)
+// ============================================================
+
+export interface CommentScoreFactors {
+  signalScore: number;      // 信号维度 0-5
+  lengthScore: number;      // 信息量维度 0-5
+  sentimentScore: number;   // 情感维度 0-5
+  engagementScore: number;  // 互动维度 0-5
+}
+
+export function scoreComment(text: string, likeCount: number = 0, replyCount: number = 0): {
+  score: number;
+  signals: string[];
+  factors: CommentScoreFactors;
+  verdict: 'critical' | 'high' | 'medium' | 'low' | 'noise';
+} {
+  const signals = detectSignals(text);
+  
+  // 1. 信号维度 (0-5)：不是简单计数，按信号质量加权
+  const signalWeights: Record<string, number> = {
+    purchase_intent: 3,        // 购买意图 = 最高价值
+    price_objection: 2.5,      // 价格异议 = 可转化
+    effect_skepticism: 2,      // 效果怀疑 = 教育机会
+    safety_concern: 2,         // 安全担忧 = 信任建设
+    competitor_comparison: 2.5,// 竞品比较 = 差异化机会
+    skincare_concern: 2,       // 护肤困扰 = 需求信号
+    audience_fit: 2,           // 人群适配 = 精准定位
+    usage_question: 1.5,       // 使用疑问 = 内容机会
+    ingredient_focus: 2,       // 成分关注 = 专业信任
+    repurchase_signal: 3,      // 复购信号 = 忠诚度
+    positive_feedback: 1.5,    // 好评 = 社交证明
+    negative_experience: 3,    // 负面 = 风险信号(高关注)
+    trust_gap: 2.5,            // 信任缺口 = 关键障碍
+    dm_consult_signal: 1,      // 私信咨询 = 低公开价值
+    scenario_need: 1.5,        // 场景需求 = 内容灵感
+  };
+  const totalWeight = signals.reduce((sum, s) => sum + (signalWeights[s] || 1), 0);
+  const signalScore = Math.min(5, totalWeight / 2); // 归一化到0-5
+
+  // 2. 信息量维度 (0-5)：评论长度反映信息密度
+  const len = text.length;
+  const lengthScore = len >= 100 ? 5 : len >= 60 ? 4 : len >= 30 ? 3 : len >= 15 ? 2 : len >= 5 ? 1 : 0;
+
+  // 3. 情感维度 (0-5)：负面 > 质疑 > 中性 > 正面（负面和质疑更有分析价值）
+  const hasNegative = signals.includes('negative_experience') || signals.includes('trust_gap');
+  const hasSkepticism = signals.includes('effect_skepticism') || signals.includes('price_objection') || signals.includes('safety_concern');
+  const hasPositive = signals.includes('positive_feedback') || signals.includes('repurchase_signal');
+  const sentimentScore = hasNegative ? 5 : hasSkepticism ? 4 : hasPositive ? 2 : 3;
+
+  // 4. 互动维度 (0-5)：点赞量和回复量反映社区共鸣
+  const engagementScore = Math.min(5, Math.floor((likeCount / 5) + (replyCount / 2)));
+
+  // 综合评分：加权平均 (信号40% + 信息量25% + 情感20% + 互动15%)
+  const finalScore = Math.round(
+    signalScore * 0.40 + lengthScore * 0.25 + sentimentScore * 0.20 + engagementScore * 0.15
+  );
+
+  const verdict = finalScore >= 4 ? 'critical' : finalScore >= 3 ? 'high' : finalScore >= 2 ? 'medium' : finalScore >= 1 ? 'low' : 'noise';
+
+  return {
+    score: finalScore,
+    signals,
+    factors: { signalScore, lengthScore, sentimentScore, engagementScore },
+    verdict,
+  };
+}
+
+/**
+ * 为评论列表计算批量评分
+ */
+export function batchScoreComments(comments: Array<{ text: string; likeCount?: number; replyCount?: number }>): Array<{
+  text: string;
+  score: number;
+  signals: string[];
+  verdict: string;
+}> {
+  return comments.map(c => {
+    const result = scoreComment(c.text, c.likeCount || 0, c.replyCount || 0);
+    return { text: c.text, score: result.score, signals: result.signals, verdict: result.verdict };
+  });
+}
+
 // Get all signals
 export function getAllSignals(): CommentSignal[] {
   return COMMENT_SIGNALS;

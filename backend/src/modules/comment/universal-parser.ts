@@ -4,7 +4,7 @@
  */
 import * as XLSX from 'xlsx';
 import * as fs from 'node:fs';
-import { detectSignals } from './comment-signals.js';
+import { detectSignals, scoreComment } from './comment-signals.js';
 
 // 抖音标准字段
 const DOUYIN_FIELDS = {
@@ -152,12 +152,13 @@ function parseFile(filePath: string): ParseResult {
     if (cid && seenIds.has(cid)) { duplicates++; continue; }
     if (cid) seenIds.add(cid);
 
-    const signals = detectSignals(text);
-    let score = 1;
-    if (signals.length >= 3) score = 5;
-    else if (signals.length === 2) score = 4;
-    else if (signals.length === 1) score = 3;
-    else if (text.length > 20) score = 2;
+    const likeCount = Number(parseValue(row, mapping, 'like_count')) || 0;
+    const replyCount = Number(parseValue(row, mapping, 'reply_count')) || 0;
+
+    // v4.3: Multi-factor scoring model
+    const scoring = scoreComment(text, likeCount, replyCount);
+    const signals = scoring.signals;
+    const score = scoring.score;
 
     let cleanStatus = 'valid';
     // v4.2 fix: 中文2字符评论有意义("支持""好！""试试")，只有1字符或无意义短评才标记
@@ -174,8 +175,8 @@ function parseFile(filePath: string): ParseResult {
       commentIdExternal: cid,
       commentText: text,
       normalizedText: text.replace(/\s+/g, ' '),
-      likeCount: Number(parseValue(row, mapping, 'like_count')) || 0,
-      replyCount: Number(parseValue(row, mapping, 'reply_count')) || 0,
+      likeCount,
+      replyCount,
       createdAtExternal: parseExcelDate(row[Object.keys(mapping).find(k => mapping[k] === 'created_at') || '']),
       ipLocation: parseValue(row, mapping, 'ip_location'),
       userIdHash: hashId(parseValue(row, mapping, platform === 'xiaohongshu' ? 'user_id' : 'user_uid')),
