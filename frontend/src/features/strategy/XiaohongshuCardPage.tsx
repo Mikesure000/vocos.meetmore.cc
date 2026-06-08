@@ -111,11 +111,12 @@ export default function XiaohongshuCardPage() {
         <Grid size={6}><Card><CardContent><F label="正文结构"><List dense>{card.bodyStructure?.map((s: string,i: number)=><ListItem key={i}><ListItemIcon><CheckCircle color="success" fontSize="small"/></ListItemIcon><ListItemText primary={s}/></ListItem>)}</List></F></CardContent></Card></Grid>
         <Grid size={6}><Card><CardContent><F label="笔记类型 + 收藏点">{card.noteType}<Box mt={1}>{card.collectionPoints?.map((c: string,i: number)=><Chip key={i} icon={<Bookmark/>} label={c} size="small" sx={{mr:0.5,mb:0.5}}/>)}</Box></F></CardContent></Card></Grid>
 
-        <Grid size={6}><Card><CardContent><F label="素材需求 + 卖点呈现">{card.materialNeeds?.map((m: string,i: number)=><Chip key={i} label={m} size="small" sx={{mr:0.5,mb:0.5}}/>)}<F label="卖点呈现">{card.sellingPoints}</F><F label="证明机制">{card.proofMechanism}</F></CardContent></Card></Grid>
+        <Grid size={6}><Card><CardContent><F label="素材需求">{card.materialNeeds?.map((m: string,i: number)=><Chip key={i} label={m} size="small" sx={{mr:0.5,mb:0.5}}/>)}</F><F label="卖点呈现">{card.sellingPoints}</F><F label="证明机制">{card.proofMechanism}</F></CardContent></Card></Grid>
         <Grid size={6}><Card><CardContent><F label="互动问题">{card.interactionQuestions?.map((q: string,i: number)=><Typography key={i} variant="body2">💬 {q}</Typography>)}<F label="CTA">{card.cta}</F></CardContent></Card></Grid>
 
         <Grid size={6}><Card><CardContent><F label="避坑提醒"><List dense>{card.avoidanceTips?.map((t: string,i: number)=><ListItem key={i}><ListItemIcon><CheckCircle fontSize="small"/></ListItemIcon><ListItemText primary={t}/></ListItem>)}</List></F></CardContent></Card></Grid>
-        <Grid size={6}><Card><CardContent><F label="验收标准"><List dense>{card.acceptanceCriteria?.map((a: string,i: number)=><ListItem key={i}><ListItemIcon><CheckCircle fontSize="small"/></ListItemIcon><ListItemText primary={a}/></ListItem>)}</List></F><F label="验证指标">{card.verificationMetrics?.map((v: string,i: number)=><Chip key={i} label={v} size="small" sx={{mr:0.5,mb:0.5}}/>)}</F></CardContent></Card></Grid>
+        <Grid size={6}><Card><CardContent><F label="验收标准"><List dense>{card.acceptanceCriteria?.map((a: string,i: number)=><ListItem key={i}><ListItemIcon><CheckCircle fontSize="small"/></ListItemIcon><ListItemText primary={a}/></ListItem>)}</List></F></CardContent></Card></Grid>
+        <Grid size={6}><Card><CardContent><F label="验证指标">{card.verificationMetrics?.map((v: string,i: number)=><Chip key={i} label={v} size="small" sx={{mr:0.5,mb:0.5}}/>)}</F></CardContent></Card></Grid>
       </Grid>
     </Box>
   );
