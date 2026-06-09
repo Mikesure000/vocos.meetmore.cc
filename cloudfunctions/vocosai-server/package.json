@@ -1,8 +1,9 @@
 {
   "name": "vocosai-server",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "dependencies": {
     "bcryptjs": "^2.4.3",
-    "jsonwebtoken": "^9.0.2"
+    "jsonwebtoken": "^9.0.2",
+    "mysql2": "^3.11.0"
   }
 }

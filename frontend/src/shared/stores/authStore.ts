@@ -45,8 +45,8 @@ export const useAuthStore = create<AuthState>()((set, get) => ({
         set({ user: null, token: null, isAuthenticated: false, isVerifying: false });
       }
     } catch {
-      // 网络不可用但有 token → 允许离线登录
-      set({ isAuthenticated: true, isVerifying: false });
+      // 网络不可用 — 不自动信任旧 token，防止安全绕过
+      set({ isAuthenticated: false, isVerifying: false });
     }
   },
 

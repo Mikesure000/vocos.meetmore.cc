@@ -2,21 +2,17 @@ FROM node:22-alpine
 
 WORKDIR /app
 
-# Install ONLY production dependencies (tsx, prisma moved to deps)
+# Install ALL dependencies (tsx + prisma are runtime deps)
 COPY package*.json ./
-RUN npm ci --production
-
-# Copy source
-COPY tsconfig.json ./
 COPY prisma ./prisma
+
+RUN npm ci && npx prisma generate
+
+# Copy source code
+COPY tsconfig.json ./
 COPY src ./src
 COPY entrypoint.sh /app/entrypoint.sh
 
-# Generate Prisma client for MySQL
-RUN npx prisma generate
-
-# Create data directory (fallback for SQLite)
-RUN mkdir -p /app/data
 RUN chmod +x /app/entrypoint.sh
 
 EXPOSE 8787

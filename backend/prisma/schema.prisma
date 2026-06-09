@@ -52,7 +52,7 @@ model Team {
   owner     User         @relation("TeamOwner", fields: [ownerUserId], references: [id])
   members   TeamMember[]
   projects  Project[]
-  tasks     AnalysisTask[]
+  tasks     AnalysisTask[] @relation("TaskTeam")
   brands    Brand[]
 
   @@map("teams")
@@ -162,7 +162,7 @@ model Project {
   team     Team      @relation(fields: [teamId], references: [id])
   category Category? @relation(fields: [categoryId], references: [id])
   creator  User      @relation("ProjectCreator", fields: [createdBy], references: [id])
-  tasks    AnalysisTask[]
+  tasks    AnalysisTask[] @relation("ProjectTasks")
 
   @@map("projects")
 }
@@ -194,8 +194,9 @@ model AnalysisTask {
   startedAt      DateTime? @map("started_at") @db.DateTime(3)
   completedAt    DateTime? @map("completed_at") @db.DateTime(3)
 
-  team    Project @relation(fields: [projectId], references: [id])
-  creator User    @relation("TaskCreator", fields: [createdBy], references: [id])
+  team    Team      @relation("TaskTeam", fields: [teamId], references: [id])
+  project Project?  @relation("ProjectTasks", fields: [projectId], references: [id])
+  creator User      @relation("TaskCreator", fields: [createdBy], references: [id])
 
   comments            Comment[]
   contentAnalyses     ContentAnalysis[]

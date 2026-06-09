@@ -26,6 +26,18 @@ apiClient.interceptors.response.use(
         window.location.href = '/login';
       }
     }
-    return Promise.reject(err);
+    // Transform error for consistent handling
+    const message = err.response?.data?.message || err.message || '请求失败';
+    return Promise.reject(new Error(message));
   }
 );
+
+// Utility: check backend health
+export async function checkBackendHealth(): Promise<boolean> {
+  try {
+    const res = await fetch(`${API_BASE}/api/health`, { signal: AbortSignal.timeout(5000) });
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
