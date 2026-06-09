@@ -23,7 +23,7 @@ export default function CategoryListPage() {
   const [error, setError] = useState('');
 
   useEffect(() => {
-    apiClient.get('/categories')
+    apiClient.get('/api/categories')
       .then((res) => { setCategories(res.data || []); setLoading(false); })
       .catch((err) => { setError('加载品类失败: ' + (err.response?.data?.error || err.message)); setLoading(false); });
   }, []);

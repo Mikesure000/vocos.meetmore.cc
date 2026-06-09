@@ -204,6 +204,7 @@ model AnalysisTask {
   strategyCards       StrategyCard[]
   productionCards     ProductionCard[]
   prePublishChecks    PrePublishCheck[]
+  reviews             PostPublishReview[]
   reports             Report[]
 
   @@map("analysis_tasks")
@@ -334,6 +335,31 @@ model Report {
   task AnalysisTask @relation(fields: [taskId], references: [id])
 
   @@map("reports")
+}
+
+// ════════════════════════════════════════════
+// 发布后复盘
+// ════════════════════════════════════════════
+
+model PostPublishReview {
+  id                      String    @id @default(uuid())
+  _openid                 String    @default("") @db.VarChar(64)
+  taskId                  String    @map("task_id") @db.VarChar(36)
+  newContentUrl           String?   @map("new_content_url") @db.Text
+  newContentTitle         String?   @map("new_content_title") @db.VarChar(255)
+  newContentBody          String?   @map("new_content_body") @db.Text
+  newCommentFileId        String?   @map("new_comment_file_id") @db.VarChar(36)
+  metrics                 Json?     // { clickRate, collectRate, conversionRate, commentSentiment }
+  strategyExecutionScore  Int       @default(0) @map("strategy_execution_score")
+  commentChangeAssessment Json?     @map("comment_change_assessment") // { improved, unchanged, new }
+  nextRoundSuggestions    Json?     @map("next_round_suggestions") // [{ priority, action, reason }]
+  cardEffectivenessScore  Int       @default(0) @map("card_effectiveness_score")
+  status                  String    @default("pending") @db.VarChar(32)
+  createdAt               DateTime  @default(now()) @map("created_at") @db.DateTime(3)
+
+  task AnalysisTask @relation(fields: [taskId], references: [id])
+
+  @@map("post_publish_reviews")
 }
 
 // ════════════════════════════════════════════

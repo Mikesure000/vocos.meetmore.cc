@@ -36,7 +36,7 @@ export default function PostPublishReviewPage() {
 
   const loadReviews = () => {
     setLoading(true);
-    apiClient.get('/reviews')
+    apiClient.get('/api/reviews')
       .then((res) => { setReviews(res.data || []); setLoading(false); })
       .catch((err) => { setError('加载复盘列表失败'); setLoading(false); });
   };
@@ -44,7 +44,7 @@ export default function PostPublishReviewPage() {
   useEffect(() => { loadReviews(); }, []);
 
   const createReview = () => {
-    apiClient.post('/reviews', { taskId: 'demo-task', newContentUrl, newContentTitle, newContentBody: '' })
+    apiClient.post('/api/reviews', { taskId: 'demo-task', newContentUrl, newContentTitle, newContentBody: '' })
       .then(() => {
         setShowCreate(false); setNewContentUrl(''); setNewContentTitle(''); loadReviews();
       })
