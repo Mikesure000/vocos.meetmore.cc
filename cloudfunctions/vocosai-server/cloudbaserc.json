@@ -1,0 +1,6 @@
+{
+  "envId": "vocosai-d6g2s679pcc7b886d",
+  "cloudrun": {
+    "name": "vocosai-server"
+  }
+}
